@@ -1,0 +1,6 @@
+{
+  "name": "Portal de Citas HIC | FCV",
+  "description": "Portal oficial para la asignación y gestión de citas médicas de alta especialidad en el Hospital Internacional de Colombia y Fundación Cardiovascular de Colombia.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

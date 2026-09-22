@@ -1,0 +1,196 @@
+<div class="min-h-screen flex flex-col bg-surface text-on-surface">
+  
+  <!-- Barra Superior de Navegación de Pantallas para Evaluación y Demostración -->
+  <aside aria-label="Navegador de Pantallas" class="w-full bg-[#002042] text-white z-50 py-1 px-2 text-xs border-b border-white/10 shadow-sm">
+    <div class="max-w-5xl mx-auto flex items-center justify-between gap-2">
+      <div class="flex items-center gap-1.5 shrink-0">
+        <span class="w-2 h-2 rounded-full bg-[#5bb8fe] animate-pulse"></span>
+        <span class="font-semibold tracking-tight text-[11px] text-[#cce5ff]">Pantallas HIC • FCV:</span>
+      </div>
+
+      <div class="flex items-center gap-1 overflow-x-auto no-scrollbar py-0.5">
+        <button
+          type="button"
+          (click)="setScreen('login')"
+          [class.bg-[#0a3663]]="currentScreen() === 'login'"
+          [class.text-white]="currentScreen() === 'login'"
+          [class.text-[#cce5ff]]="currentScreen() !== 'login'"
+          class="px-2 py-1 rounded text-[11px] font-medium hover:bg-white/10 transition-colors whitespace-nowrap cursor-pointer border-0"
+        >
+          1. Iniciar sesión
+        </button>
+
+        <button
+          type="button"
+          (click)="setScreen('registro')"
+          [class.bg-[#0a3663]]="currentScreen() === 'registro'"
+          [class.text-white]="currentScreen() === 'registro'"
+          [class.text-[#cce5ff]]="currentScreen() !== 'registro'"
+          class="px-2 py-1 rounded text-[11px] font-medium hover:bg-white/10 transition-colors whitespace-nowrap cursor-pointer border-0"
+        >
+          2. Crear cuenta
+        </button>
+
+        <button
+          type="button"
+          (click)="setScreen('recuperar')"
+          [class.bg-[#0a3663]]="currentScreen() === 'recuperar'"
+          [class.text-white]="currentScreen() === 'recuperar'"
+          [class.text-[#cce5ff]]="currentScreen() !== 'recuperar'"
+          class="px-2 py-1 rounded text-[11px] font-medium hover:bg-white/10 transition-colors whitespace-nowrap cursor-pointer border-0"
+        >
+          3. Recuperar contraseña
+        </button>
+
+        <button
+          type="button"
+          (click)="setScreen('reset-password')"
+          [class.bg-[#0a3663]]="currentScreen() === 'reset-password'"
+          [class.text-white]="currentScreen() === 'reset-password'"
+          [class.text-[#cce5ff]]="currentScreen() !== 'reset-password'"
+          class="px-2 py-1 rounded text-[11px] font-medium hover:bg-white/10 transition-colors whitespace-nowrap cursor-pointer border-0"
+        >
+          4. Nueva contraseña
+        </button>
+
+        <button
+          type="button"
+          (click)="setScreen('dashboard')"
+          [class.bg-[#0a3663]]="currentScreen() === 'dashboard'"
+          [class.text-white]="currentScreen() === 'dashboard'"
+          [class.text-[#cce5ff]]="currentScreen() !== 'dashboard'"
+          class="px-2 py-1 rounded text-[11px] font-medium hover:bg-white/10 transition-colors whitespace-nowrap cursor-pointer border-0"
+        >
+          5. Portal Inicio
+        </button>
+
+        <button
+          type="button"
+          (click)="setScreen('solicitar')"
+          [class.bg-[#0a3663]]="currentScreen() === 'solicitar'"
+          [class.text-white]="currentScreen() === 'solicitar'"
+          [class.text-[#cce5ff]]="currentScreen() !== 'solicitar'"
+          class="px-2 py-1 rounded text-[11px] font-medium hover:bg-white/10 transition-colors whitespace-nowrap cursor-pointer border-0"
+        >
+          6. Solicitar Cita
+        </button>
+
+        <button
+          type="button"
+          (click)="setScreen('mis-citas')"
+          [class.bg-[#0a3663]]="currentScreen() === 'mis-citas'"
+          [class.text-white]="currentScreen() === 'mis-citas'"
+          [class.text-[#cce5ff]]="currentScreen() !== 'mis-citas'"
+          class="px-2 py-1 rounded text-[11px] font-medium hover:bg-white/10 transition-colors whitespace-nowrap cursor-pointer border-0"
+        >
+          7. Mis Citas
+        </button>
+
+        <button
+          type="button"
+          (click)="setScreen('perfil')"
+          [class.bg-[#0a3663]]="currentScreen() === 'perfil'"
+          [class.text-white]="currentScreen() === 'perfil'"
+          [class.text-[#cce5ff]]="currentScreen() !== 'perfil'"
+          class="px-2 py-1 rounded text-[11px] font-medium hover:bg-white/10 transition-colors whitespace-nowrap cursor-pointer border-0"
+        >
+          8. Perfil
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Contenedor de la Pantalla Activa -->
+  <div class="flex-1 flex flex-col">
+    @switch (currentScreen()) {
+      @case ('login') {
+        <app-login />
+      }
+      @case ('registro') {
+        <app-register />
+      }
+      @case ('recuperar') {
+        <app-forgot-password />
+      }
+      @case ('reset-password') {
+        <app-reset-password />
+      }
+      @case ('dashboard') {
+        <app-dashboard />
+      }
+      @case ('solicitar') {
+        <app-booking />
+      }
+      @case ('mis-citas') {
+        <app-appointments />
+      }
+      @case ('perfil') {
+        <app-profile />
+      }
+    }
+  </div>
+
+  <!-- Barra de Navegación Inferior (Portal de Pacientes) -->
+  @if (isPatientPortalScreen()) {
+    <nav class="fixed bottom-0 w-full z-40 pb-safe bg-surface-container-lowest/90 backdrop-blur-xl shadow-[0_-2px_12px_rgba(0,0,0,0.04)] border-t border-outline-variant/30">
+      <div class="h-16 max-w-lg mx-auto px-2 flex items-center justify-around">
+        
+        <!-- Inicio -->
+        <button
+          type="button"
+          (click)="setScreen('dashboard')"
+          [class.text-primary]="currentScreen() === 'dashboard'"
+          [class.font-semibold]="currentScreen() === 'dashboard'"
+          [class.text-on-surface-variant]="currentScreen() !== 'dashboard'"
+          class="flex flex-col items-center justify-center min-w-[64px] min-h-[44px] py-1 transition-colors cursor-pointer border-0 bg-transparent"
+        >
+          <span class="material-symbols-outlined text-[22px]">home</span>
+          <span class="text-[11px] mt-0.5">Inicio</span>
+        </button>
+
+        <!-- Solicitar -->
+        <button
+          type="button"
+          (click)="setScreen('solicitar')"
+          [class.text-primary]="currentScreen() === 'solicitar'"
+          [class.font-semibold]="currentScreen() === 'solicitar'"
+          [class.text-on-surface-variant]="currentScreen() !== 'solicitar'"
+          class="flex flex-col items-center justify-center min-w-[64px] min-h-[44px] py-1 transition-colors cursor-pointer border-0 bg-transparent"
+        >
+          <div class="relative flex items-center justify-center">
+            <span class="material-symbols-outlined text-[22px]">event_available</span>
+            <span class="absolute -top-1 -right-1.5 w-2 h-2 rounded-full bg-secondary"></span>
+          </div>
+          <span class="text-[11px] mt-0.5">Solicitar</span>
+        </button>
+
+        <!-- Mis Citas -->
+        <button
+          type="button"
+          (click)="setScreen('mis-citas')"
+          [class.text-primary]="currentScreen() === 'mis-citas'"
+          [class.font-semibold]="currentScreen() === 'mis-citas'"
+          [class.text-on-surface-variant]="currentScreen() !== 'mis-citas'"
+          class="flex flex-col items-center justify-center min-w-[64px] min-h-[44px] py-1 transition-colors cursor-pointer border-0 bg-transparent"
+        >
+          <span class="material-symbols-outlined text-[22px]">calendar_month</span>
+          <span class="text-[11px] mt-0.5">Mis citas</span>
+        </button>
+
+        <!-- Perfil -->
+        <button
+          type="button"
+          (click)="setScreen('perfil')"
+          [class.text-primary]="currentScreen() === 'perfil'"
+          [class.font-semibold]="currentScreen() === 'perfil'"
+          [class.text-on-surface-variant]="currentScreen() !== 'perfil'"
+          class="flex flex-col items-center justify-center min-w-[64px] min-h-[44px] py-1 transition-colors cursor-pointer border-0 bg-transparent"
+        >
+          <span class="material-symbols-outlined text-[22px]">person</span>
+          <span class="text-[11px] mt-0.5">Perfil</span>
+        </button>
+      </div>
+    </nav>
+  }
+
+</div>
