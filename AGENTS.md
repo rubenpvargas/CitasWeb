@@ -1,70 +1,41 @@
-# Guía para `citas-web`
+# `citas-web` — instrucciones del agente frontend
 
-## Estado verificado del repositorio
+## Estado comprobado del repositorio
 
-El repositorio aún no tiene `package.json`, configuración de React o Angular,
-`src/`, rutas, estilos/tokens ni artefactos de diseño aprobado. Por ello el
-stack no está decidido y no se debe crear, migrar ni preferir un framework por
-iniciativa propia. Después de importar la exportación de Google AI Studio,
-inspeccionar de nuevo el proyecto y depurar este archivo con evidencia real.
+Al 2026-09-17 este repositorio no contiene `package.json`, código TypeScript, configuración React/Angular, rutas, estilos/tokens, pruebas ni documentación de un diseño Stitch/AI Studio aprobado. No hay HU, criterios de aceptación ni DoD disponibles en este repositorio.
 
-Tampoco hay HU, criterios de aceptación ni DoD en el repositorio. Antes de
-implementar una funcionalidad, localizar la especificación aprobada en
-`citas-api/docs/wiki/scrum/` o solicitarla al orquestador.
+No elegir React ni Angular hasta que el estudiante importe el proyecto generado por Google AI Studio. Tras esa importación, inspeccionar primero `package.json`, configuración, estructura de `src`, enrutamiento, estilos/tokens, scripts y la documentación/artefactos del diseño aprobado antes de proponer cambios.
 
-## Alcance de este repositorio
+## Responsabilidad exclusiva
 
-Implementar exclusivamente el frontend TypeScript que resulte de Stitch y
-Google AI Studio: UI, rutas, formularios, estados de interfaz, accesibilidad,
-cliente REST, manejo de errores, build y pruebas.
+Este repositorio contiene únicamente la interfaz TypeScript: pantallas, componentes, formularios, estado de UI, accesibilidad, autorización de rutas, cliente REST, manejo de errores y pruebas/build del stack importado. No editar `../citas-api`.
 
-No editar `citas-api`, no añadir Express/BFF y no implementar reglas de
-negocio como autoridad del cliente. El frontend consume Spring Boot
-directamente por REST; si falta o cambia un contrato, reportarlo al
-orquestador para coordinación cross-repo.
+La UI consume `citas-api` directamente por REST. No añadir Express, BFF ni lógica de negocio que sustituya la autoridad del backend.
 
-La LLM Wiki bajo `citas-api/docs/wiki/llm-wiki/` es global y la mantiene el
-orquestador. Este agente puede consultarla, pero no la mantiene ni crea una
-wiki propia.
+## Fidelidad de diseño
 
-## Diseño y experiencia
+- Stitch/AI Studio aprobado es la fuente de verdad visual.
+- Preservar componentes, estilos y tokens correctos durante la reconciliación del código generado.
+- No rediseñar pantallas por preferencia técnica o estética.
+- Si no existe evidencia del diseño aprobado, identificarlo como bloqueo antes de una reconciliación visual; no inventar esa referencia.
 
-- El diseño aprobado de Stitch/AI Studio es la fuente de verdad visual.
-- Antes de reconciliar código generado, identificar sus rutas, componentes,
-  estilos, tokens, assets y comportamiento existente.
-- Preservar componentes y estilos correctos; no rediseñar pantallas aprobadas
-  para resolver una integración técnica.
-- Para cada cambio, mapear explícitamente estados `loading`, `empty`, `error`,
-  `success` y controles `disabled` cuando apliquen.
-- Mantener etiquetas, foco, navegación por teclado, mensajes de error y
-  semántica accesible.
+## Flujo por historia de usuario
 
-## Integración y seguridad
+1. Localizar la HU aprobada, criterios de aceptación y DoD. Si no existen, detener la implementación y solicitar o seguir el flujo autorizado de especificación.
+2. Identificar pantallas, rutas, componentes, servicios REST y estados UI afectados.
+3. Mapear explícitamente loading, empty, error, success y disabled, además de estados de acceso no autorizado cuando correspondan.
+4. Implementar el cambio mínimo sin alterar el diseño aprobado ni trasladar reglas de negocio al cliente.
+5. Ejecutar los scripts reales de build, typecheck y pruebas disponibles en el proyecto importado.
+6. Verificar comportamiento contra criterios de aceptación y resumir evidencia y aspectos no verificados.
 
-- Configurar la URL de API mediante el mecanismo de environment propio del
-  framework detectado; no hardcodearla.
-- No hardcodear JWT, refresh tokens, secretos ni credenciales, y no abrir ni
-  versionar `.env`.
-- Tratar la autorización de rutas y los roles como experiencia de UI; el
-  backend conserva la autoridad de autorización y reglas de negocio.
-- Mostrar errores del contrato de forma segura y usable, sin exponer datos
-  sensibles.
+## API, seguridad y coordinación
 
-## Flujo por incremento
-
-1. Leer la HU, CA y DoD aprobados.
-2. Identificar pantallas, rutas, componentes, servicios y estados afectados.
-3. Confirmar contrato REST disponible; elevar al orquestador cualquier cambio
-   requerido en API antes de editar ambos repositorios.
-4. Presentar un plan con archivos, estados de UI y evidencia esperada.
-5. Implementar el mínimo coherente sin desviar el diseño aprobado.
-6. Ejecutar build, typecheck y pruebas disponibles tras descubrir los scripts
-   reales en `package.json`; no inventar comandos mientras no exista.
-7. Verificar criterios de aceptación y resumir evidencia y elementos no
-   verificados.
+- La URL de API debe obtenerse de la configuración de environment propia del stack detectado; no hardcodearla.
+- No hardcodear tokens, secretos ni credenciales; no registrarlos en consola.
+- Tratar validaciones, disponibilidad, transiciones de cita, autorización y ownership como decisiones finales del backend. El cliente puede mejorar la experiencia, pero no sustituye la validación server-side.
+- Si falta o cambia un contrato REST, reportarlo al orquestador con el endpoint, payload, respuesta/error esperado, pantallas afectadas y evidencia requerida. No editar `../citas-api`.
+- No mantener una LLM Wiki propia; la memoria global está en `citas-api/docs/wiki/llm-wiki/` bajo responsabilidad del orquestador.
 
 ## Git
 
-Usar `develop` para trabajo y reservar `main` para incrementos estables. Si la
-rama no existe, informarlo antes de crearla. No reescribir historial para borrar
-progreso.
+`main` es estable y `develop` es la rama de trabajo definida por el workspace. Actualmente solo existe `main`; no crear ni cambiar ramas como efecto incidental de una tarea de documentación. Preservar cambios no relacionados y no reescribir historial.
