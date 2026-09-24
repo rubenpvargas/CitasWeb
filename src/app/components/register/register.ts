@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, inject, signal, computed } from '@angular/core';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
 import { PortalService } from '../../services/portal.service';
+import { AuthService } from '../../services/auth.service';
 
 @Component({
   selector: 'app-register',
@@ -20,6 +21,13 @@ import { PortalService } from '../../services/portal.service';
               <p class="text-[14px] text-white font-semibold">¡Cuenta creada exitosamente!</p>
               <p class="text-[12px] text-surface-variant">Redirigiendo a tu nuevo portal de citas médicas...</p>
             </div>
+          </div>
+        }
+
+        @if (registrationError()) {
+          <div class="mb-5 p-4 rounded-xl bg-error-container text-on-error-container flex items-start gap-3 border border-[#fecdd3]" role="alert">
+            <span class="material-symbols-outlined text-error text-lg">error</span>
+            <p class="text-[13px] leading-snug">{{ registrationError() }}</p>
           </div>
         }
 
@@ -134,12 +142,6 @@ import { PortalService } from '../../services/portal.service';
                 class="w-full h-11 px-3.5 bg-transparent text-[14px] text-on-surface placeholder:text-outline/60 focus:outline-none rounded-lg"
               />
             </div>
-            @if (isDuplicateEmail()) {
-              <div class="flex items-center gap-1.5 text-error px-1 mt-0.5">
-                <span class="material-symbols-outlined text-sm">error</span>
-                <span class="text-[12px]">Este correo ya se encuentra registrado en el portal.</span>
-              </div>
-            }
           </div>
 
           <!-- Teléfono con prefijo Colombia -->
@@ -288,12 +290,14 @@ import { PortalService } from '../../services/portal.service';
 })
 export class RegisterComponent {
   private readonly portalService = inject(PortalService);
+  private readonly authService = inject(AuthService);
   private readonly fb = inject(FormBuilder);
 
   readonly showPassword = signal<boolean>(false);
   readonly showConfirmPassword = signal<boolean>(false);
   readonly loading = signal<boolean>(false);
   readonly showSuccessBanner = signal<boolean>(false);
+  readonly registrationError = signal<string | null>(null);
 
   readonly registerForm = this.fb.group({
     firstName: ['Carlos Eduardo', [Validators.required]],
@@ -319,11 +323,6 @@ export class RegisterComponent {
   readonly hasUpper = computed(() => /[A-Z]/.test(this.currentPassword()));
   readonly hasNumber = computed(() => /[0-9]/.test(this.currentPassword()));
 
-  readonly isDuplicateEmail = computed(() => {
-    const email = this.registerForm.get('email')?.value?.trim().toLowerCase();
-    return email === 'duplicado@fcv.org';
-  });
-
   toggleShowPassword() {
     this.showPassword.update((v) => !v);
   }
@@ -338,30 +337,51 @@ export class RegisterComponent {
       return;
     }
 
+    if (this.registerForm.value.password !== this.registerForm.value.confirmPassword) {
+      this.registrationError.set('Las contraseñas no coinciden. Verifícalas e inténtalo nuevamente.');
+      return;
+    }
+
     this.loading.set(true);
+    this.registrationError.set(null);
+    this.showSuccessBanner.set(false);
 
-    setTimeout(() => {
-      this.loading.set(false);
-      this.showSuccessBanner.set(true);
+    const form = this.registerForm.getRawValue();
+    this.authService.register({
+      firstName: form.firstName ?? '',
+      lastName: form.lastName ?? '',
+      documentType: form.docType ?? '',
+      documentNumber: form.docNumber ?? '',
+      email: form.email ?? '',
+      phone: form.phone ?? '',
+      password: form.password ?? '',
+    }).subscribe({
+      next: (user) => {
+        this.loading.set(false);
+        this.showSuccessBanner.set(true);
 
-      const fName = this.registerForm.value.firstName || 'Carlos';
-      const lName = this.registerForm.value.lastName || 'Gómez';
+        this.portalService.activePatient.set({
+          fullName: `${user.firstName} ${user.lastName}`,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          docType: user.documentType,
+          docNumber: user.documentNumber,
+          email: user.email,
+          phone: user.phone,
+          avatarUrl: this.portalService.activePatient().avatarUrl,
+        });
 
-      this.portalService.activePatient.set({
-        fullName: `${fName} ${lName}`,
-        firstName: fName,
-        lastName: lName,
-        docType: this.registerForm.value.docType || 'CC',
-        docNumber: this.registerForm.value.docNumber || '1098765432',
-        email: this.registerForm.value.email || 'paciente@ejemplo.com',
-        phone: this.registerForm.value.phone || '300 123 4567',
-        avatarUrl: this.portalService.activePatient().avatarUrl,
-      });
-
-      setTimeout(() => {
-        this.portalService.setScreen('dashboard');
-      }, 1200);
-    }, 900);
+        setTimeout(() => {
+          this.portalService.setScreen('dashboard');
+        }, 1200);
+      },
+      error: (error) => {
+        this.loading.set(false);
+        this.registrationError.set(error.status === 409
+          ? 'El correo o documento ya está registrado.'
+          : 'No fue posible crear la cuenta. Inténtalo nuevamente.');
+      },
+    });
   }
 
   goToLogin() {

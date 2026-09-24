@@ -23,6 +23,27 @@ interface LoginResponse {
   user: AuthenticatedUser;
 }
 
+export interface RegisterUserRequest {
+  firstName: string;
+  lastName: string;
+  documentType: string;
+  documentNumber: string;
+  email: string;
+  phone: string;
+  password: string;
+}
+
+export interface RegisteredUser {
+  id: number;
+  firstName: string;
+  lastName: string;
+  documentType: string;
+  documentNumber: string;
+  email: string;
+  phone: string;
+  roles: string[];
+}
+
 @Injectable({ providedIn: 'root' })
 export class AuthService {
   private readonly http = inject(HttpClient);
@@ -35,6 +56,15 @@ export class AuthService {
         sessionStorage.setItem('fcv.refresh-token', tokens.refreshToken);
         return tokens.user;
       }),
+      catchError((error) => throwError(() => error)),
+    );
+  }
+
+  register(request: RegisterUserRequest) {
+    return this.http.get<RuntimeConfig>('assets/runtime-config.json').pipe(
+      switchMap(({ apiUrl }) =>
+        this.http.post<RegisteredUser>(`${apiUrl}/api/v1/auth/register`, request),
+      ),
       catchError((error) => throwError(() => error)),
     );
   }
