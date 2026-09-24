@@ -251,8 +251,9 @@ export class LoginComponent {
     const email = this.loginForm.value.email?.trim() ?? '';
     const password = this.loginForm.value.password ?? '';
     this.authService.login(email, password).subscribe({
-      next: () => {
+      next: (user) => {
         this.loading.set(false);
+        this.portalService.setAuthenticatedPatient(user);
         this.portalService.isAuthenticated.set(true);
         this.portalService.setScreen('dashboard');
       },

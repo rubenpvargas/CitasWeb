@@ -6,12 +6,21 @@ interface RuntimeConfig {
   apiUrl: string;
 }
 
-interface TokenResponse {
+export interface AuthenticatedUser {
+  id: number;
+  firstName: string;
+  lastName: string;
+  email: string;
+  roles: string[];
+}
+
+interface LoginResponse {
   accessToken: string;
   refreshToken: string;
   tokenType: 'Bearer';
   accessExpiresAt: string;
   refreshExpiresAt: string;
+  user: AuthenticatedUser;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -20,10 +29,11 @@ export class AuthService {
 
   login(email: string, password: string) {
     return this.http.get<RuntimeConfig>('assets/runtime-config.json').pipe(
-      switchMap(({ apiUrl }) => this.http.post<TokenResponse>(`${apiUrl}/api/v1/auth/login`, { email, password })),
+      switchMap(({ apiUrl }) => this.http.post<LoginResponse>(`${apiUrl}/api/v1/auth/login`, { email, password })),
       map((tokens) => {
         sessionStorage.setItem('fcv.access-token', tokens.accessToken);
         sessionStorage.setItem('fcv.refresh-token', tokens.refreshToken);
+        return tokens.user;
       }),
       catchError((error) => throwError(() => error)),
     );

@@ -26,6 +26,20 @@ export class PortalService {
     avatarUrl: DR_HERRERA_PHOTO,
   });
 
+  constructor() {
+    this.activePatient.update((patient) => ({
+      ...patient,
+      fullName: '',
+      firstName: '',
+      lastName: '',
+      docType: '',
+      docNumber: '',
+      email: '',
+      phone: '',
+      avatarUrl: '',
+    }));
+  }
+
   readonly doctors = signal<Doctor[]>([
     {
       id: 'dr-herrera',
@@ -170,6 +184,14 @@ export class PortalService {
   setScreen(screen: ScreenType) {
     this.currentScreen.set(screen);
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  setAuthenticatedPatient(patient: Pick<PatientUser, 'firstName' | 'lastName' | 'email'>) {
+    this.activePatient.update((current) => ({
+      ...current,
+      ...patient,
+      fullName: `${patient.firstName} ${patient.lastName}`.trim(),
+    }));
   }
 
   toggleEmptyState() {
