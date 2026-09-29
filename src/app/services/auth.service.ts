@@ -1,5 +1,5 @@
 import { HttpClient } from '@angular/common/http';
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
 import { catchError, map, switchMap, throwError } from 'rxjs';
 
 interface RuntimeConfig {
@@ -22,6 +22,8 @@ interface LoginResponse {
   refreshExpiresAt: string;
   user: AuthenticatedUser;
 }
+
+export interface PasswordResetResponse { message: string; developmentToken?: string | null; }
 
 export interface RegisterUserRequest {
   firstName: string;
@@ -47,6 +49,7 @@ export interface RegisteredUser {
 @Injectable({ providedIn: 'root' })
 export class AuthService {
   private readonly http = inject(HttpClient);
+  readonly currentUser = signal<AuthenticatedUser | null>(null);
 
   login(email: string, password: string) {
     return this.http.get<RuntimeConfig>('assets/runtime-config.json').pipe(
@@ -54,6 +57,7 @@ export class AuthService {
       map((tokens) => {
         sessionStorage.setItem('fcv.access-token', tokens.accessToken);
         sessionStorage.setItem('fcv.refresh-token', tokens.refreshToken);
+        this.currentUser.set(tokens.user);
         return tokens.user;
       }),
       catchError((error) => throwError(() => error)),
@@ -67,5 +71,28 @@ export class AuthService {
       ),
       catchError((error) => throwError(() => error)),
     );
+  }
+
+  requestPasswordReset(email: string) {
+    return this.http.get<RuntimeConfig>('assets/runtime-config.json').pipe(
+      switchMap(({ apiUrl }) => this.http.post<PasswordResetResponse>(`${apiUrl}/api/v1/auth/password-reset/request`, { email })),
+    );
+  }
+
+  confirmPasswordReset(token: string, newPassword: string) {
+    return this.http.get<RuntimeConfig>('assets/runtime-config.json').pipe(
+      switchMap(({ apiUrl }) => this.http.post<void>(`${apiUrl}/api/v1/auth/password-reset/confirm`, { token, newPassword })),
+    );
+  }
+
+  logout() {
+    const refreshToken = sessionStorage.getItem('fcv.refresh-token');
+    sessionStorage.removeItem('fcv.access-token');
+    sessionStorage.removeItem('fcv.refresh-token');
+    this.currentUser.set(null);
+    if (!refreshToken) return;
+    this.http.get<RuntimeConfig>('assets/runtime-config.json').pipe(
+      switchMap(({ apiUrl }) => this.http.post<void>(`${apiUrl}/api/v1/auth/logout`, { refreshToken })),
+    ).subscribe({ error: () => undefined });
   }
 }

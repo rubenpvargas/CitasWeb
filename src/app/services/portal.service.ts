@@ -1,4 +1,6 @@
-import { Injectable, signal, computed } from '@angular/core';
+import { Injectable, signal, computed, inject } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { switchMap } from 'rxjs';
 import { Cita, Doctor, PatientUser, ScreenType } from '../models/portal.types';
 
 export const HIC_BUILDING_IMG = 'https://lh3.googleusercontent.com/aida-public/AB6AXuDpJ7HSVkmsFGQMu5P-6NsAjYEb81sDHWBXRi3cI9kBvdOEr-DS5vQOCodF4Nje417_2TlRBsxMNB8daSR1v8VopUKk7A3hIe2ZGYKUTVXBzT4-Jp7Wl6RuSNP0dEWvyXeeuisZmQEHlYJ86Is6CoYi0Pwkhs89yLWw7atNzVcZ9Ma36oWmvigeRYScX9FmJYO7Ye82Qs6ABLyLT09ClbmBuFx-3mQ3k8bPxv2R1cKCwriPy1ABG04lWA';
@@ -11,6 +13,7 @@ export const DR_HERRERA_PHOTO = 'https://lh3.googleusercontent.com/aida-public/A
   providedIn: 'root',
 })
 export class PortalService {
+  private readonly http = inject(HttpClient);
   readonly currentScreen = signal<ScreenType>('login');
   readonly isAuthenticated = signal<boolean>(false);
   readonly emptyStateSimulated = signal<boolean>(false);
@@ -183,7 +186,17 @@ export class PortalService {
   // Action methods
   setScreen(screen: ScreenType) {
     this.currentScreen.set(screen);
+    if (screen === 'dashboard' || screen === 'mis-citas') this.loadAppointments();
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  loadAppointments() {
+    this.http.get<{ apiUrl: string }>('assets/runtime-config.json').pipe(
+      switchMap(({ apiUrl }) => this.http.get<Record<string, unknown>[]>(`${apiUrl}/api/v1/appointments`)),
+    ).subscribe({
+      next: (items) => this.citas.set(items.map((item) => this.toCita(item))),
+      error: () => undefined,
+    });
   }
 
   setAuthenticatedPatient(patient: Pick<PatientUser, 'firstName' | 'lastName' | 'email'>) {
@@ -207,9 +220,12 @@ export class PortalService {
   }
 
   cancelAppointment(id: string) {
-    this.citas.update((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, status: 'Cancelada' } : c))
-    );
+    this.http.get<{ apiUrl: string }>('assets/runtime-config.json').pipe(
+      switchMap(({ apiUrl }) => this.http.post<void>(`${apiUrl}/api/v1/appointments/${id}/cancel`, {})),
+    ).subscribe({
+      next: () => this.citas.update((prev) => prev.map((c) => (c.id === id ? { ...c, status: 'Cancelada' } : c))),
+      error: () => undefined,
+    });
   }
 
   addNewAppointment(newCita: Omit<Cita, 'id'>) {
@@ -219,5 +235,44 @@ export class PortalService {
     };
     this.citas.update((prev) => [cita, ...prev]);
     this.emptyStateSimulated.set(false);
+  }
+
+  bookDemoAppointment() {
+    const start = new Date();
+    start.setDate(start.getDate() + 1);
+    start.setHours(8, 0, 0, 0);
+    const startAt = start.toISOString().slice(0, 19);
+    return this.http.get<{ apiUrl: string }>('assets/runtime-config.json').pipe(
+      switchMap(({ apiUrl }) => this.http.post<Record<string, unknown>>(`${apiUrl}/api/v1/appointments/general`, {
+        professionalId: 9001,
+        locationCode: 'HIC',
+        startAt,
+        reason: 'Solicitud sintética desde el portal',
+      })),
+    );
+  }
+
+  private toCita(item: Record<string, unknown>): Cita {
+    const start = new Date(String(item['startAt']));
+    return {
+      id: String(item['id']),
+      specialty: String(item['specialtyName'] ?? 'Consulta'),
+      doctorName: `${String(item['professionalFirstName'] ?? '')} ${String(item['professionalLastName'] ?? '')}`.trim(),
+      date: start.toLocaleDateString('es-CO', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' }),
+      time: start.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }),
+      arrivalNotice: 'Llegar 20 min antes',
+      modality: 'Presencial',
+      sede: String(item['locationName'] ?? item['locationCode'] ?? ''),
+      locationDetails: String(item['locationName'] ?? ''),
+      status: this.toUiStatus(String(item['status'] ?? 'REQUESTED')),
+      icon: 'event',
+      preparation: ['Presentar documento de identidad.', 'Llegar con anticipación.'],
+    };
+  }
+
+  private toUiStatus(status: string): Cita['status'] {
+    if (status === 'APPROVED') return 'Confirmada';
+    if (status === 'CANCELLED') return 'Cancelada';
+    return 'Atendida';
   }
 }

@@ -358,6 +358,15 @@ export class BookingComponent {
 
   confirmBooking() {
     this.bookingLoading.set(true);
+    this.portalService.bookDemoAppointment().subscribe({
+      next: () => {
+        this.bookingLoading.set(false);
+        this.bookingSuccess.set(true);
+        this.portalService.loadAppointments();
+      },
+      error: () => this.bookingLoading.set(false),
+    });
+    return;
     setTimeout(() => {
       this.bookingLoading.set(false);
       this.bookingSuccess.set(true);

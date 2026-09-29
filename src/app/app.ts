@@ -9,6 +9,7 @@ import { DashboardComponent } from './components/dashboard/dashboard';
 import { BookingComponent } from './components/booking/booking';
 import { AppointmentsComponent } from './components/appointments/appointments';
 import { ProfileComponent } from './components/profile/profile';
+import { OperationsComponent } from './components/operations/operations';
 
 @Component({
   selector: 'app-root',
@@ -22,6 +23,7 @@ import { ProfileComponent } from './components/profile/profile';
     BookingComponent,
     AppointmentsComponent,
     ProfileComponent,
+    OperationsComponent,
   ],
   templateUrl: './app.html',
   styleUrl: './app.css',

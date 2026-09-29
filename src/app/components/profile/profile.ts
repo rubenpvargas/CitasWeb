@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { PortalService } from '../../services/portal.service';
+import { AuthService } from '../../services/auth.service';
 
 @Component({
   selector: 'app-profile',
@@ -138,6 +139,7 @@ import { PortalService } from '../../services/portal.service';
 })
 export class ProfileComponent {
   private readonly portalService = inject(PortalService);
+  private readonly authService = inject(AuthService);
   readonly patient = this.portalService.activePatient;
 
   goToResetPassword() {
@@ -149,6 +151,8 @@ export class ProfileComponent {
   }
 
   logout() {
+    this.authService.logout();
+    this.portalService.isAuthenticated.set(false);
     this.portalService.setScreen('login');
   }
 }

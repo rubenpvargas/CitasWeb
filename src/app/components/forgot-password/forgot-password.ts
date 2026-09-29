@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, inject, signal, OnDestroy } from '@angular/core';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
 import { PortalService } from '../../services/portal.service';
+import { AuthService } from '../../services/auth.service';
 
 @Component({
   selector: 'app-forgot-password',
@@ -171,6 +172,7 @@ import { PortalService } from '../../services/portal.service';
 export class ForgotPasswordComponent implements OnDestroy {
   private readonly portalService = inject(PortalService);
   private readonly fb = inject(FormBuilder);
+  private readonly authService = inject(AuthService);
 
   readonly loading = signal<boolean>(false);
   readonly sentSuccess = signal<boolean>(false);
@@ -191,12 +193,16 @@ export class ForgotPasswordComponent implements OnDestroy {
     this.loading.set(true);
     const emailVal = this.recoveryForm.value.email || 'ana.martinez@ejemplo.com';
 
-    setTimeout(() => {
-      this.loading.set(false);
-      this.submittedEmail.set(emailVal);
-      this.sentSuccess.set(true);
-      this.startCountdown(58);
-    }, 600);
+    this.authService.requestPasswordReset(emailVal).subscribe({
+      next: (response) => {
+        this.loading.set(false);
+        this.submittedEmail.set(emailVal);
+        this.sentSuccess.set(true);
+        if (response.developmentToken) sessionStorage.setItem('fcv.reset-token', response.developmentToken);
+        this.startCountdown(58);
+      },
+      error: () => this.loading.set(false),
+    });
   }
 
   startCountdown(seconds: number) {

@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, inject, signal, computed } from '@angular/core';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
 import { PortalService } from '../../services/portal.service';
+import { AuthService } from '../../services/auth.service';
 
 @Component({
   selector: 'app-reset-password',
@@ -258,6 +259,7 @@ import { PortalService } from '../../services/portal.service';
 export class ResetPasswordComponent {
   private readonly portalService = inject(PortalService);
   private readonly fb = inject(FormBuilder);
+  private readonly authService = inject(AuthService);
 
   readonly showNewPassword = signal<boolean>(false);
   readonly showConfirmPassword = signal<boolean>(false);
@@ -364,10 +366,18 @@ export class ResetPasswordComponent {
     this.showMismatchError.set(false);
     this.loading.set(true);
 
-    setTimeout(() => {
-      this.loading.set(false);
-      this.showSuccessModal.set(true);
-    }, 600);
+    const token = sessionStorage.getItem('fcv.reset-token') ?? '';
+    this.authService.confirmPasswordReset(token, p1).subscribe({
+      next: () => {
+        this.loading.set(false);
+        sessionStorage.removeItem('fcv.reset-token');
+        this.showSuccessModal.set(true);
+      },
+      error: () => {
+        this.loading.set(false);
+        this.showExpiredBanner.set(true);
+      },
+    });
   }
 
   goToLogin() {
