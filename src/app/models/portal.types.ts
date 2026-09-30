@@ -6,7 +6,8 @@ export type ScreenType =
   | 'dashboard' 
   | 'solicitar' 
   | 'mis-citas' 
-  | 'perfil';
+  | 'perfil'
+  | 'operacion';
 
 export interface Doctor {
   id: string;

@@ -371,9 +371,14 @@ export class RegisterComponent {
           avatarUrl: this.portalService.activePatient().avatarUrl,
         });
 
-        setTimeout(() => {
-          this.portalService.setScreen('dashboard');
-        }, 1200);
+        this.authService.login(user.email, form.password ?? '').subscribe({
+          next: (authenticated) => {
+            this.portalService.setAuthenticatedPatient(authenticated);
+            this.portalService.isAuthenticated.set(true);
+            this.portalService.setScreen('dashboard');
+          },
+          error: () => this.portalService.setScreen('login'),
+        });
       },
       error: (error) => {
         this.loading.set(false);
