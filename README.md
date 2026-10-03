@@ -1,28 +1,62 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# citas-web — Portal Angular de citas HIC | FCV (datos sintéticos)
 
-# Portal Angular de citas FCV (datos sintéticos)
+SPA Angular 21 (standalone, signals, Tailwind CSS 4) del laboratorio de
+agendamiento de citas. Consume directamente la API REST Spring Boot de
+`citas-api`: no hay Express ni BFF. Todos los datos son sintéticos.
 
-This contains everything you need to run your app locally.
+## Requisitos
 
-View your app in AI Studio: https://ai.studio/apps/c890a9e9-2809-4090-ad76-57a1ef731fc4
+- Node.js 24 LTS y npm 11.
+- Una instancia de `citas-api` accesible (por defecto `http://localhost:8080`).
 
-## Run locally
-
-La imagen de producción se construye con `Dockerfile` y sirve la SPA mediante
-Nginx. `API_URL` se inyecta en tiempo de arranque a
-`assets/runtime-config.json`; no hay BFF ni URL de API fija en el bundle.
-
-**Prerequisites:**  Node.js
-
+## Uso local
 
 1. `npm ci`
-2. Ajusta `public/assets/runtime-config.json` para apuntar a `citas-api`.
-3. `npm run dev`
+2. Ajusta `public/assets/runtime-config.json` si la API no está en
+   `http://localhost:8080`:
 
-La UI consume Spring Boot directamente, añade el access token por interceptor
-y cubre registro, login, recuperación, perfil, búsqueda/reserva, citas y
-cancelación. El backend sigue siendo la autoridad de disponibilidad y estados.
+   ```json
+   { "apiUrl": "http://localhost:8080" }
+   ```
 
-Verificación: `npm run lint` y `npm run build`.
+3. `npm run dev` y abre `http://localhost:5173`.
+
+La configuración de ejecución se carga una sola vez al arrancar la aplicación;
+el bundle no contiene ninguna URL de API fija.
+
+## Verificación
+
+| Comando | Qué hace |
+|---|---|
+| `npm run lint` | angular-eslint (TypeScript y plantillas, incluidas reglas de accesibilidad) |
+| `npx ng test --watch=false` | Pruebas unitarias con Vitest + jsdom (`npm test` las ejecuta en modo watch) |
+| `npm run build` | Build de producción en `dist/app/browser` |
+
+## Docker
+
+`Dockerfile` construye la SPA y la sirve con Nginx (con fallback a
+`index.html` para las rutas del router). Al arrancar el contenedor,
+`docker/entrypoint.sh` genera `assets/runtime-config.json` a partir de la
+variable `API_URL`:
+
+```sh
+docker build -t citas-web .
+docker run -p 8081:80 -e API_URL=http://localhost:8080 citas-web
+```
+
+El origen del frontend debe estar permitido en la configuración CORS de
+`citas-api`.
+
+## Rutas y sesión
+
+- Públicas: `/login`, `/registro`, `/recuperar`, `/restablecer?token=…`.
+- USER: `/inicio`, `/reservar`, `/mis-citas`; ADMIN/PROFESSIONAL: `/operacion`;
+  cualquier sesión: `/perfil`.
+- La sesión (tokens y usuario de la respuesta de login) vive en
+  `sessionStorage`. El interceptor añade el access token, renueva una sola vez
+  ante `401` y, si la renovación falla, vuelve a `/login`. Los guards y el menú
+  por rol son solo experiencia de usuario: la autorización final es del backend.
+
+Las pantallas de inicio, reserva, citas, perfil y operación aún muestran parte
+de los datos sintéticos del prototipo (`src/app/services/legacy-mock.ts`) hasta
+que se implementen sus historias de usuario.

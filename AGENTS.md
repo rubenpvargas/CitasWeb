@@ -2,9 +2,38 @@
 
 ## Estado comprobado del repositorio
 
-Al 2026-09-17 este repositorio no contiene `package.json`, código TypeScript, configuración React/Angular, rutas, estilos/tokens, pruebas ni documentación de un diseño Stitch/AI Studio aprobado. No hay HU, criterios de aceptación ni DoD disponibles en este repositorio.
+Verificado el 2026-10-02 en la rama `develop`:
 
-No elegir React ni Angular hasta que el estudiante importe el proyecto generado por Google AI Studio. Tras esa importación, inspeccionar primero `package.json`, configuración, estructura de `src`, enrutamiento, estilos/tokens, scripts y la documentación/artefactos del diseño aprobado antes de proponer cambios.
+- **Stack:** Angular 21 standalone (signals, `ChangeDetectionStrategy.OnPush`,
+  zoneless), Tailwind CSS 4 vía PostCSS, TypeScript 5.9, Node 24 / npm 11.
+- **Scripts:** `npm run dev` (`ng serve` en el puerto 5173), `npm run lint`
+  (`ng lint`, angular-eslint con reglas de accesibilidad de plantillas),
+  `npm test` / `npx ng test --watch=false` (Vitest + jsdom con TestBed y
+  `HttpTestingController`) y `npm run build` (salida en `dist/app/browser`).
+- **Configuración de ejecución:** `assets/runtime-config.json` (`{ "apiUrl": ... }`)
+  se carga una sola vez al arrancar (`provideAppInitializer` en
+  `src/app/core/config/app-config.service.ts`). En Docker se genera desde la
+  variable `API_URL`; el bundle no contiene URL de API fija.
+- **Rutas:** `src/app/app.routes.ts` con carga diferida: `/login`, `/registro`,
+  `/recuperar`, `/restablecer?token=`, `/inicio`, `/reservar`, `/mis-citas`,
+  `/perfil`, `/operacion`, `/no-autorizado`; comodín a `/` (inicio del rol o login).
+- **Sesión y seguridad UI:** `src/app/core/auth/` contiene `SessionStore`
+  (signals + `sessionStorage`, consciente de expiración), `AuthService`
+  (login, registro, refresh single-flight, logout, recuperación),
+  `authInterceptor` (Bearer hacia la API salvo `/api/v1/auth/**`; ante `401`
+  renueva una vez y reintenta; si falla vuelve a `/login?aviso=sesion-expirada`;
+  ante `403` muestra `/no-autorizado`) y los guards `authGuard`, `roleGuard`
+  (`data.roles`: USER, PROFESSIONAL, ADMIN) y `guestGuard`. El filtrado de menú
+  por rol es solo UX: el backend conserva la autorización.
+- **Errores:** DTOs tipados en `src/app/core/api/api.types.ts` y mapeo de
+  Problem Details `code` → mensaje en español en `src/app/core/api/api-errors.ts`.
+- **Diseño:** el aspecto exportado de Stitch/AI Studio (tokens en
+  `src/styles.css`, plantillas de `src/app/components/`) es la referencia
+  visual. Los ZIP `portal-de-citas*.zip` de la raíz son exportaciones
+  originales del prototipo.
+- **Pendiente (olas posteriores):** inicio, reserva, mis citas, perfil y
+  operación aún usan datos sintéticos de `src/app/services/legacy-mock.ts` o
+  llamadas parciales; se sustituirán con sus HU.
 
 ## Responsabilidad exclusiva
 
@@ -30,7 +59,7 @@ La UI consume `citas-api` directamente por REST. No añadir Express, BFF ni lóg
 
 ## API, seguridad y coordinación
 
-- La URL de API debe obtenerse de la configuración de environment propia del stack detectado; no hardcodearla.
+- La URL de API se obtiene de `assets/runtime-config.json` mediante `AppConfigService` (generado desde `API_URL` en Docker); no hardcodearla ni volver a leer el archivo en cada servicio.
 - No hardcodear tokens, secretos ni credenciales; no registrarlos en consola.
 - Tratar validaciones, disponibilidad, transiciones de cita, autorización y ownership como decisiones finales del backend. El cliente puede mejorar la experiencia, pero no sustituye la validación server-side.
 - Si falta o cambia un contrato REST, reportarlo al orquestador con el endpoint, payload, respuesta/error esperado, pantallas afectadas y evidencia requerida. No editar `../citas-api`.
@@ -38,4 +67,4 @@ La UI consume `citas-api` directamente por REST. No añadir Express, BFF ni lóg
 
 ## Git
 
-`main` es estable y `develop` es la rama de trabajo definida por el workspace. Actualmente solo existe `main`; no crear ni cambiar ramas como efecto incidental de una tarea de documentación. Preservar cambios no relacionados y no reescribir historial.
+`main` es estable y `develop` es la rama de trabajo definida por el workspace; ambas existen. No crear ni cambiar ramas como efecto incidental de una tarea. Preservar cambios no relacionados y no reescribir historial. Antes de cada commit deben pasar `npm run lint`, `npx ng test --watch=false` y `npm run build`.
