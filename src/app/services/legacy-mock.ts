@@ -1,69 +1,15 @@
 /**
  * Datos sintéticos heredados del prototipo de AI Studio. Las pantallas de
- * reserva, citas y operación los usarán hasta que sus HU (olas posteriores)
+ * inicio y citas los usarán hasta que sus HU (olas posteriores)
  * consuman la API real. No contienen datos reales de FCV.
  */
-import { Cita, Doctor } from '../models/portal.types';
+import { Cita } from '../models/portal.types';
 
 export const HIC_BUILDING_IMG = 'https://lh3.googleusercontent.com/aida-public/AB6AXuDpJ7HSVkmsFGQMu5P-6NsAjYEb81sDHWBXRi3cI9kBvdOEr-DS5vQOCodF4Nje417_2TlRBsxMNB8daSR1v8VopUKk7A3hIe2ZGYKUTVXBzT4-Jp7Wl6RuSNP0dEWvyXeeuisZmQEHlYJ86Is6CoYi0Pwkhs89yLWw7atNzVcZ9Ma36oWmvigeRYScX9FmJYO7Ye82Qs6ABLyLT09ClbmBuFx-3mQ3k8bPxv2R1cKCwriPy1ABG04lWA';
 
 export const HIC_LOGO_IMG = 'https://lh3.googleusercontent.com/aida/AEtjO1WTrMpLS8jjbEAmi84opFVpxoT3gnhodtawtqPe3Kzp4jz5OpUAZp8SUhfj85MLurnbZKSEYkeULgid_d_iRYbU6bI5m_qOcc_cvWl8YW2dtRaH-M-Qnbvymco2LyMp2ZuyzvUqAgT3s9S0zlK18DzYSxrSM91Pma9LrwoiZbnxz_Jmfg3BoxqMDDlFGuLIhnYBf5izEvDLFoAhf3ck1bQ0YbpNCwVEGyYMjR13KgEnFB9eF2VZA67wpF6p';
 
 export const DR_HERRERA_PHOTO = 'https://lh3.googleusercontent.com/aida-public/AB6AXuDj9KBtCaJ17U8rmSpZUVF9SIrhWw2Imn8kw2UrU-SyHon8B0fosJPm5kyn4RI_FJgM01p8rLTRScq92PbjZimoqDeUQIkoaJdegcYVBEYCXXWFRC0neI3xw7EKzEbCEWsHYqE00lWzPy_5nLDG8I8N1F2BxXF5LWuGJ2zUtGEkYTC7Dk7-s7lXb_8-4kgET0XJ0kqERosI5dHTbBNJUSIH6eI77Cs0q85t2hthhZSo2zfZT2d0ZiHv2g';
-
-export const LEGACY_MOCK_DOCTORS: Doctor[] = [
-  {
-    id: 'dr-herrera',
-    name: 'Dra. Valentina Herrera',
-    specialty: 'Cardiología Adultos',
-    subspecialty: 'Ecocardiografía e Insuficiencia Cardíaca',
-    sede: 'HIC',
-    room: 'Torre Médica A, Piso 4, Consultorio 410',
-    rating: 4.9,
-    availableDays: ['Lunes', 'Miércoles', 'Jueves', 'Viernes'],
-    photoUrl: DR_HERRERA_PHOTO,
-  },
-  {
-    id: 'dr-silva',
-    name: 'Dr. Roberto Silva Gómez',
-    specialty: 'Cardiología Adultos',
-    subspecialty: 'Cardiología Intervencionista',
-    sede: 'HIC',
-    room: 'Torre Médica A, Piso 4, Consultorio 412',
-    rating: 4.95,
-    availableDays: ['Martes', 'Jueves', 'Sábado'],
-  },
-  {
-    id: 'dr-morales',
-    name: 'Dra. Claudia Morales',
-    specialty: 'Medicina Interna',
-    subspecialty: 'Manejo Crónico y Medicina Preventiva',
-    sede: 'HIC',
-    room: 'Torre Médica B, Piso 3, Consultorio 305',
-    rating: 4.88,
-    availableDays: ['Lunes', 'Martes', 'Miércoles', 'Jueves'],
-  },
-  {
-    id: 'dr-pena',
-    name: 'Dr. Fernando Peña',
-    specialty: 'Oftalmología',
-    subspecialty: 'Retina y Cirugía Refractiva',
-    sede: 'FCV',
-    room: 'Pabellón El Bosque, Consultorio 114',
-    rating: 4.92,
-    availableDays: ['Lunes', 'Miércoles', 'Viernes'],
-  },
-  {
-    id: 'dr-caicedo',
-    name: 'Dr. Andrés Caicedo',
-    specialty: 'Neurología Clínica',
-    subspecialty: 'Neurofisiología y Trastornos del Sueño',
-    sede: 'HIC',
-    room: 'Torre Médica A, Piso 5, Consultorio 502',
-    rating: 4.87,
-    availableDays: ['Martes', 'Jueves'],
-  },
-];
 
 export const LEGACY_MOCK_CITAS: Cita[] = [
   {

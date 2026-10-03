@@ -1,9 +1,9 @@
 import { Injectable, signal, computed, effect, inject, untracked } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Cita, Doctor, PatientUser } from '../models/portal.types';
+import { Cita, PatientUser } from '../models/portal.types';
 import { AppConfigService } from '../core/config/app-config.service';
 import { SessionStore } from '../core/auth/session.store';
-import { LEGACY_MOCK_CITAS, LEGACY_MOCK_DOCTORS } from './legacy-mock';
+import { LEGACY_MOCK_CITAS } from './legacy-mock';
 
 export { HIC_BUILDING_IMG, HIC_LOGO_IMG, DR_HERRERA_PHOTO } from './legacy-mock';
 
@@ -35,8 +35,6 @@ export class PortalService {
       avatarUrl: '',
     };
   });
-
-  readonly doctors = signal<Doctor[]>(LEGACY_MOCK_DOCTORS);
 
   readonly citas = signal<Cita[]>(LEGACY_MOCK_CITAS);
 
@@ -100,28 +98,6 @@ export class PortalService {
     this.http.post<void>(this.config.url(`/api/v1/appointments/${id}/cancel`), {}).subscribe({
       next: () => this.citas.update((prev) => prev.map((c) => (c.id === id ? { ...c, status: 'Cancelada' } : c))),
       error: () => undefined,
-    });
-  }
-
-  addNewAppointment(newCita: Omit<Cita, 'id'>) {
-    const cita: Cita = {
-      ...newCita,
-      id: 'cita-' + Date.now(),
-    };
-    this.citas.update((prev) => [cita, ...prev]);
-    this.emptyStateSimulated.set(false);
-  }
-
-  bookDemoAppointment() {
-    const start = new Date();
-    start.setDate(start.getDate() + 1);
-    start.setHours(8, 0, 0, 0);
-    const startAt = start.toISOString().slice(0, 19);
-    return this.http.post<Record<string, unknown>>(this.config.url('/api/v1/appointments/general'), {
-      professionalId: 9001,
-      locationCode: 'HIC',
-      startAt,
-      reason: 'Solicitud sintética desde el portal',
     });
   }
 

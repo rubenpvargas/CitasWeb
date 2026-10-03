@@ -1,15 +1,3 @@
-export interface Doctor {
-  id: string;
-  name: string;
-  specialty: string;
-  subspecialty?: string;
-  sede: 'HIC' | 'FCV' | 'Ambas';
-  room: string;
-  rating: number;
-  availableDays: string[];
-  photoUrl?: string;
-}
-
 export interface Cita {
   id: string;
   specialty: string;
