@@ -106,7 +106,7 @@ export class PortalService {
     return {
       id: String(item['id']),
       specialty: String(item['specialtyName'] ?? 'Consulta'),
-      doctorName: `${String(item['professionalFirstName'] ?? '')} ${String(item['professionalLastName'] ?? '')}`.trim(),
+      doctorName: String(item['professionalName'] ?? `${String(item['professionalFirstName'] ?? '')} ${String(item['professionalLastName'] ?? '')}`).trim(),
       date: start.toLocaleDateString('es-CO', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' }),
       time: start.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }),
       arrivalNotice: 'Llegar 20 min antes',

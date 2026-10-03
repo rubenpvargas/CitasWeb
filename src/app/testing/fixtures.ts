@@ -92,3 +92,17 @@ export function appointmentFixture(overrides: Record<string, unknown> = {}) {
     ...overrides,
   };
 }
+
+/** Citas sintéticas en todos los estados (HU-019 a HU-021). */
+export const MIXED = [
+  appointmentFixture({ id: 1, status: 'REQUESTED', startAt: '2099-02-01T08:00:00', endAt: '2099-02-01T09:00:00', cancellable: true, reschedulable: false }),
+  appointmentFixture({ id: 2, status: 'APPROVED', startAt: '2099-02-02T08:00:00', endAt: '2099-02-02T08:30:00' }),
+  appointmentFixture({ id: 3, status: 'REJECTED', rejectionReason: 'Orden médica vencida', cancellable: false, reschedulable: false }),
+  appointmentFixture({ id: 4, status: 'CANCELLED', cancellable: false, reschedulable: false }),
+  appointmentFixture({ id: 5, status: 'COMPLETED', startAt: '2020-01-01T08:00:00', endAt: '2020-01-01T08:30:00', cancellable: false, reschedulable: false }),
+  appointmentFixture({ id: 6, status: 'NO_SHOW', startAt: '2020-01-02T08:00:00', endAt: '2020-01-02T08:30:00', cancellable: false, reschedulable: false }),
+  appointmentFixture({
+    id: 7, status: 'APPROVED', startAt: '2099-03-01T08:00:00', endAt: '2099-03-01T08:30:00', reschedulable: false,
+    pendingReschedule: { id: 70, requestedStartAt: '2099-03-05T10:00:00', requestedEndAt: '2099-03-05T10:30:00', locationCode: 'ICV' },
+  }),
+];
