@@ -54,6 +54,6 @@ export class App {
 
   readonly showPortalNav = computed(() => {
     const path = this.url().split(/[?#]/)[0];
-    return this.session.isAuthenticated() && PORTAL_PATHS.includes(path);
+    return this.session.isAuthenticated() && PORTAL_PATHS.some((p) => path === p || path.startsWith(`${p}/`));
   });
 }

@@ -4,9 +4,12 @@ import { authGuard, guestGuard, roleGuard } from './core/auth/auth.guards';
 import { SessionStore } from './core/auth/session.store';
 import { roleHome } from './core/auth/role-home';
 import { Role } from './core/api/api.types';
+import { operationsHome } from './components/operations/operations-links';
 
 const USER_ONLY: Role[] = ['USER'];
 const OPERATIONS: Role[] = ['ADMIN', 'PROFESSIONAL'];
+const ADMIN_ONLY: Role[] = ['ADMIN'];
+const PROFESSIONAL_ONLY: Role[] = ['PROFESSIONAL'];
 
 export const routes: Routes = [
   {
@@ -74,6 +77,27 @@ export const routes: Routes = [
     canActivate: [authGuard, roleGuard],
     data: { roles: OPERATIONS },
     loadComponent: () => import('./components/operations/operations').then((m) => m.OperationsComponent),
+    children: [
+      {
+        path: '',
+        pathMatch: 'full',
+        redirectTo: () => operationsHome(inject(SessionStore).roles()),
+      },
+      {
+        path: 'bandeja',
+        title: 'Bandeja | Operación | Portal de Citas HIC | FCV',
+        canActivate: [roleGuard],
+        data: { roles: ADMIN_ONLY },
+        loadComponent: () => import('./components/operations/inbox/inbox').then((m) => m.InboxComponent),
+      },
+      {
+        path: 'agenda',
+        title: 'Agenda | Operación | Portal de Citas HIC | FCV',
+        canActivate: [roleGuard],
+        data: { roles: PROFESSIONAL_ONLY },
+        loadComponent: () => import('./components/operations/agenda/agenda').then((m) => m.AgendaComponent),
+      },
+    ],
   },
   {
     path: 'no-autorizado',
