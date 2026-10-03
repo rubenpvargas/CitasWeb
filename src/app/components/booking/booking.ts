@@ -2,8 +2,12 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 import { Router } from '@angular/router';
 import { PortalService } from '../../services/portal.service';
 import { ActiveSpecialtyDto, CatalogApi, CatalogLocationDto } from '../../core/api/catalog.api';
-import { AvailabilityApi, AvailabilitySlotDto } from '../../core/api/availability.api';
-import { errorMessage } from '../../core/api/api-errors';
+import { AppointmentDto, AvailabilityApi, AvailabilitySlotDto } from '../../core/api/availability.api';
+import { errorCode, errorMessage } from '../../core/api/api-errors';
+import { appointmentStatusLabel } from '../../core/api/appointment-status';
+
+export const SLOT_TAKEN_MESSAGE =
+  'El horario seleccionado acaba de ser tomado por otra persona. Actualizamos los cupos disponibles: elige otro horario.';
 import {
   MAX_RANGE_DAYS,
   addDays,
@@ -181,6 +185,7 @@ export function slotKey(slot: AvailabilitySlotDto): string {
             }
           </div>
           <div role="alert" aria-live="assertive" aria-atomic="true">
+            @if (slotTakenMessage()) { <p class="ui-alert-error" data-testid="slot-taken">{{ slotTakenMessage() }}</p> }
             @if (searchError()) { <p class="ui-alert-error" data-testid="availability-error">{{ searchError() }}</p> }
           </div>
 
@@ -255,6 +260,12 @@ export function slotKey(slot: AvailabilitySlotDto): string {
               <p><strong class="text-primary">Lugar:</strong> {{ slot.locationName }}</p>
               <p><strong class="text-primary">Fecha y Hora:</strong> {{ longDate(slot.startAt) }} a las {{ time(slot.startAt) }} ({{ slot.durationMinutes }} min)</p>
             </div>
+            <div class="flex flex-col gap-1">
+              <label for="booking-reason" class="text-[12px] text-on-surface-variant font-medium">Motivo de consulta (opcional)</label>
+              <textarea id="booking-reason" rows="2" maxlength="500" class="ui-input h-auto py-2" data-testid="booking-reason"
+                [value]="reason()" (input)="reason.set($any($event.target).value)" [disabled]="bookingLoading()"
+                placeholder="Describe brevemente el motivo (sin datos sensibles)"></textarea>
+            </div>
             <div role="alert" aria-live="assertive" aria-atomic="true">
               @if (bookingError()) { <p class="ui-alert-error" data-testid="booking-error">{{ bookingError() }}</p> }
             </div>
@@ -282,14 +293,22 @@ export function slotKey(slot: AvailabilitySlotDto): string {
     </main>
 
     <!-- Modal Éxito de Agendamiento -->
-    @if (bookingSuccess()) {
+    @if (booked(); as appt) {
       <div class="fixed inset-0 z-50 bg-[#283044]/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
-        <div role="dialog" aria-modal="true" aria-labelledby="booking-success-title" data-testid="booking-success"
+        <div role="dialog" aria-modal="true" aria-labelledby="booking-success-title" aria-describedby="booking-success-detail" data-testid="booking-success"
           class="w-full max-w-sm bg-surface-container-lowest rounded-2xl p-6 shadow-xl flex flex-col items-center text-center border border-outline-variant/40">
           <div class="w-16 h-16 rounded-full bg-[#89f5e7] flex items-center justify-center text-[#003d37] mb-4 shadow-xs">
             <span class="material-symbols-outlined text-[36px]" aria-hidden="true">check_circle</span>
           </div>
           <h2 id="booking-success-title" class="text-xl text-primary font-semibold tracking-tight mb-1">¡Cita agendada con éxito!</h2>
+          <p class="text-[13px] text-on-surface-variant mb-4 leading-relaxed">
+            Tu cita para <strong>{{ appt.specialtyName }}</strong> con <strong>{{ appt.professionalName }}</strong> quedó registrada.
+          </p>
+          <div id="booking-success-detail" class="w-full bg-surface-container-low p-3 rounded-xl mb-4 text-left text-[12px] text-on-surface-variant">
+            <p class="font-semibold text-primary">{{ longDate(appt.startAt) }} · {{ time(appt.startAt) }}–{{ time(appt.endAt) }}</p>
+            <p>{{ appt.locationName || appt.locationCode }}</p>
+            <p>Estado: <strong data-testid="booking-success-status">{{ statusLabel(appt.status) }}</strong> · N.º {{ appt.id }}</p>
+          </div>
           <button
             type="button"
             (click)="finishAndGoDashboard()"
@@ -331,8 +350,11 @@ export class BookingComponent {
   readonly selectedKey = signal<string | null>(null);
 
   readonly bookingLoading = signal(false);
-  readonly bookingSuccess = signal(false);
+  readonly booked = signal<AppointmentDto | null>(null);
+  readonly reason = signal('');
   readonly bookingError = signal<string | null>(null);
+  /** Aviso persistente tras un 409 SLOT_UNAVAILABLE (se muestra junto a los cupos recargados). */
+  readonly slotTakenMessage = signal<string | null>(null);
 
   readonly isGeneral = computed(() => this.selectedSpecialty()?.general ?? false);
 
@@ -382,6 +404,10 @@ export class BookingComponent {
     });
   }
 
+  statusLabel(status: string): string {
+    return appointmentStatusLabel(status);
+  }
+
   key(slot: AvailabilitySlotDto): string {
     return slotKey(slot);
   }
@@ -399,6 +425,7 @@ export class BookingComponent {
   }
 
   private resetResults() {
+    this.slotTakenMessage.set(null);
     this.slots.set([]);
     this.searched.set(false);
     this.searchError.set(null);
@@ -430,6 +457,7 @@ export class BookingComponent {
   selectSlot(slot: AvailabilitySlotDto) {
     this.selectedKey.set(slotKey(slot));
     this.bookingError.set(null);
+    this.slotTakenMessage.set(null);
   }
 
   search(keepMessage = false) {
@@ -447,7 +475,10 @@ export class BookingComponent {
     const previousKey = this.selectedKey();
     this.searching.set(true);
     this.searchError.set(null);
-    if (!keepMessage) this.bookingError.set(null);
+    if (!keepMessage) {
+      this.bookingError.set(null);
+      this.slotTakenMessage.set(null);
+    }
     this.availability
       .search({ specialtyId: specialty.id, from: this.from(), to: this.to(), locationCode: this.selectedLocation() || null })
       .subscribe({
@@ -471,28 +502,44 @@ export class BookingComponent {
   confirmBooking() {
     const slot = this.selectedSlot();
     const specialty = this.selectedSpecialty();
+    // Evita doble envío: un solo POST por confirmación.
     if (!slot || !specialty || this.bookingLoading()) return;
     this.bookingLoading.set(true);
     this.bookingError.set(null);
-    const base = { professionalId: slot.professionalId, locationCode: slot.locationCode, startAt: slot.startAt };
+    const reason = this.reason().trim();
+    const base = {
+      professionalId: slot.professionalId,
+      locationCode: slot.locationCode,
+      startAt: slot.startAt,
+      ...(reason ? { reason } : {}),
+    };
     const request$ = specialty.general
       ? this.availability.bookGeneral(base)
       : this.availability.bookSpecialized({ ...base, specialtyId: specialty.id });
     request$.subscribe({
-      next: () => {
+      next: (appointment) => {
         this.bookingLoading.set(false);
-        this.bookingSuccess.set(true);
+        this.booked.set(appointment);
         this.portalService.loadAppointments();
       },
       error: (e: unknown) => {
         this.bookingLoading.set(false);
+        if (errorCode(e) === 'SLOT_UNAVAILABLE') {
+          // El backend es la autoridad: se descarta la selección y se recarga la disponibilidad.
+          this.bookingError.set(null);
+          this.selectedKey.set(null);
+          this.searchError.set(null);
+          this.slotTakenMessage.set(SLOT_TAKEN_MESSAGE);
+          this.search(true);
+          return;
+        }
         this.bookingError.set(errorMessage(e, 'No fue posible agendar la cita.'));
       },
     });
   }
 
   finishAndGoDashboard() {
-    this.bookingSuccess.set(false);
+    this.booked.set(null);
     void this.router.navigate(['/inicio']);
   }
 

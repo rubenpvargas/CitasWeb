@@ -69,3 +69,26 @@ export function slotFixture(overrides: Partial<{ professionalId: number; profess
     ...overrides,
   };
 }
+
+/** `AppointmentDto` sintético (Ola E). */
+export function appointmentFixture(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 101,
+    status: 'APPROVED',
+    locationCode: 'HIC',
+    locationName: 'Hospital Internacional de Colombia',
+    professionalId: 9,
+    professionalName: 'Dra. Sintética Uno',
+    specialtyId: 1,
+    specialtyName: 'Medicina General',
+    startAt: '2099-01-15T08:00:00',
+    endAt: '2099-01-15T08:30:00',
+    durationMinutes: 30,
+    reason: null,
+    rejectionReason: null,
+    pendingReschedule: null,
+    cancellable: true,
+    reschedulable: true,
+    ...overrides,
+  };
+}

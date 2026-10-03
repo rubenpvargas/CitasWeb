@@ -1,4 +1,4 @@
-import { TEST_API_URL, slotFixture } from '../../testing/fixtures';
+import { TEST_API_URL, appointmentFixture, slotFixture } from '../../testing/fixtures';
 import { setupBooking } from '../../testing/booking-harness';
 
 const AV = `${TEST_API_URL}/api/v1/availability`;
@@ -121,7 +121,7 @@ describe('BookingComponent — disponibilidad (HU-015)', () => {
     await ctx.click('booking-confirm');
     const req = ctx.http.expectOne({ method: 'POST', url: `${TEST_API_URL}/api/v1/appointments/general` });
     expect(req.request.body).toEqual({ professionalId: 9, locationCode: 'HIC', startAt: '2099-01-15T08:00:00' });
-    req.flush({ id: 1, status: 'APPROVED' }, { status: 201, statusText: 'Created' });
+    req.flush(appointmentFixture(), { status: 201, statusText: 'Created' });
     ctx.http.match((r) => r.url === `${TEST_API_URL}/api/v1/appointments`).forEach((r) => r.flush([]));
   });
 });
