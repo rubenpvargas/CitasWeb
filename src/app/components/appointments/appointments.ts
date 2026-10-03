@@ -1,9 +1,10 @@
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
+import { A11yModule } from '@angular/cdk/a11y';
 import { AppointmentsApi } from '../../core/api/appointments.api';
 import { AppointmentDto } from '../../core/api/availability.api';
 import { APPOINTMENT_STATUS_LABELS, appointmentStatusLabel } from '../../core/api/appointment-status';
-import { errorMessage } from '../../core/api/api-errors';
+import { errorCode, errorMessage } from '../../core/api/api-errors';
 import { MAX_RANGE_DAYS, dateOf, daysBetween, formatLongDate, timeOf } from '../../core/time/bogota-time';
 
 /** Clases del distintivo por estado (paleta del diseño aprobado). */
@@ -24,6 +25,7 @@ export const STATUS_BADGE: Record<string, string> = {
 @Component({
   selector: 'app-appointments',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [A11yModule],
   template: `
     <header class="sticky top-0 w-full z-40 bg-surface-container-lowest/95 backdrop-blur-md shadow-xs border-b border-outline-variant/30">
       <div class="h-16 px-4 flex items-center justify-between max-w-lg mx-auto w-full">
@@ -125,6 +127,18 @@ export const STATUS_BADGE: Record<string, string> = {
                     Pendiente de aprobación administrativa; el horario está reservado para ti.
                   </p>
                 }
+                @if (cita.cancellable || cita.reschedulable) {
+                  <div class="flex items-center gap-2 pt-1 border-t border-outline-variant/20">
+                    <!-- acciones -->
+                    @if (cita.cancellable) {
+                      <button type="button" (click)="askCancel(cita)" [attr.data-testid]="'cancel-' + cita.id"
+                        [attr.aria-label]="'Cancelar cita ' + cita.id + ' de ' + cita.specialtyName"
+                        class="py-2 px-3 rounded-lg text-error hover:bg-error-container text-[12px] font-semibold transition-colors cursor-pointer border-0 bg-transparent">
+                        Cancelar cita
+                      </button>
+                    }
+                  </div>
+                }
                 @if (cita.pendingReschedule; as r) {
                   <p class="text-[12px] text-primary flex items-center gap-1.5 p-2 rounded-lg bg-surface-container" [attr.data-testid]="'pending-reschedule-' + cita.id">
                     <span class="material-symbols-outlined text-[16px] text-secondary" aria-hidden="true">update</span>
@@ -146,6 +160,29 @@ export const STATUS_BADGE: Record<string, string> = {
         }
       </div>
     </main>
+
+    <!-- Diálogo accesible de cancelación (HU-020) -->
+    @if (cancelTarget(); as target) {
+      <div class="fixed inset-0 z-50 bg-[#283044]/60 backdrop-blur-xs flex items-center justify-center p-4">
+        <div role="alertdialog" aria-modal="true" aria-labelledby="cancel-title" aria-describedby="cancel-desc" data-testid="cancel-dialog"
+          cdkTrapFocus [cdkTrapFocusAutoCapture]="true" (keydown.escape)="closeCancel()"
+          class="w-full max-w-sm bg-surface-container-lowest rounded-2xl p-6 shadow-xl flex flex-col gap-3 border border-outline-variant/40">
+          <h2 id="cancel-title" class="text-lg font-semibold text-primary m-0">¿Cancelar esta cita?</h2>
+          <p id="cancel-desc" class="text-[13px] text-on-surface-variant leading-relaxed">
+            {{ target.specialtyName }} con {{ target.professionalName }}, {{ longDate(target.startAt) }} a las {{ time(target.startAt) }}.
+            El horario quedará libre para otro paciente y la cancelación no se puede deshacer.
+          </p>
+          @if (cancelError()) { <p class="ui-alert-error" role="alert" data-testid="cancel-error">{{ cancelError() }}</p> }
+          <div class="flex gap-2 pt-1">
+            <button type="button" class="ui-btn-secondary flex-1" (click)="closeCancel()" [disabled]="cancelling()" data-testid="cancel-dismiss">Volver</button>
+            <button type="button" data-testid="cancel-confirm" (click)="confirmCancel()" [disabled]="cancelling()"
+              class="flex-1 h-11 rounded-lg bg-error text-white text-[14px] font-semibold border-0 cursor-pointer disabled:opacity-60">
+              {{ cancelling() ? 'Cancelando...' : 'Sí, cancelar cita' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    }
   `,
 })
 export class AppointmentsComponent {
@@ -162,8 +199,45 @@ export class AppointmentsComponent {
   readonly error = signal<string | null>(null);
   readonly message = signal('');
 
+  // HU-020 cancelación
+  readonly cancelTarget = signal<AppointmentDto | null>(null);
+  readonly cancelling = signal(false);
+  readonly cancelError = signal<string | null>(null);
+
   constructor() {
     this.load();
+  }
+
+  askCancel(cita: AppointmentDto) {
+    this.message.set('');
+    this.cancelError.set(null);
+    this.cancelTarget.set(cita);
+  }
+
+  closeCancel() {
+    if (this.cancelling()) return;
+    this.cancelTarget.set(null);
+  }
+
+  confirmCancel() {
+    const target = this.cancelTarget();
+    if (!target || this.cancelling()) return;
+    this.cancelling.set(true);
+    this.cancelError.set(null);
+    this.api.cancel(target.id).subscribe({
+      next: () => {
+        this.cancelling.set(false);
+        this.cancelTarget.set(null);
+        this.message.set(`Cita N.º ${target.id} cancelada. El horario quedó disponible.`);
+        this.load();
+      },
+      error: (e: unknown) => {
+        this.cancelling.set(false);
+        this.cancelError.set(errorMessage(e, 'No fue posible cancelar la cita.'));
+        // El estado cambió en el servidor: se refresca la lista detrás del diálogo.
+        if (['INVALID_TRANSITION', 'PAST_APPOINTMENT', 'NOT_FOUND'].includes(errorCode(e))) this.load();
+      },
+    });
   }
 
   label(status: string): string {
