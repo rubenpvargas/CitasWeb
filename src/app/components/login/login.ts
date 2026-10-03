@@ -1,13 +1,20 @@
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
+import { Router, RouterLink } from '@angular/router';
 import { HIC_BUILDING_IMG } from '../../services/portal.service';
 import { AuthService } from '../../core/auth/auth.service';
-import { Router } from '@angular/router';
+import { errorCode, errorMessage } from '../../core/api/api-errors';
+import { LOGIN_NOTICES, isLoginNotice } from '../../core/auth/login-notice';
+import { roleHome, safeReturnUrl } from '../../core/auth/role-home';
+
+/** Mensaje único para credenciales inválidas: no revela qué dato falló. */
+export const INVALID_CREDENTIALS_MESSAGE =
+  'Correo electrónico o contraseña incorrectos. Por favor verifica tus datos.';
 
 @Component({
   selector: 'app-login',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, RouterLink],
   template: `
     <main class="flex-1 flex flex-col relative w-full max-w-lg mx-auto px-4 pt-4 pb-8 bg-surface justify-center">
       <div class="flex flex-col w-full pb-8">
@@ -44,14 +51,28 @@ import { Router } from '@angular/router';
           </p>
         </div>
 
+        <!-- Aviso (sesión expirada, registro o contraseña actualizada) -->
+        @if (notice(); as n) {
+          <div role="status" aria-live="polite" data-testid="login-notice" class="flex items-start gap-2.5 p-3.5 rounded-xl mb-5 border text-on-surface" [class]="n.kind === 'success' ? 'bg-secondary-container/20 border-secondary-container/50' : 'bg-surface-container-low border-outline-variant/40'">
+            <span class="material-symbols-outlined text-secondary text-[20px] shrink-0 select-none mt-0.5" aria-hidden="true">
+              {{ n.kind === 'success' ? 'check_circle' : 'info' }}
+            </span>
+            <div class="flex-1 min-w-0">
+              <p class="text-[13px] font-semibold text-primary mb-0.5">{{ n.title }}</p>
+              <p class="text-[12px] text-on-surface-variant leading-tight">{{ n.message }}</p>
+            </div>
+          </div>
+        }
+
         <!-- Alerta de Validación Clínica Empática y Descartable -->
+        <div role="alert" aria-live="assertive" aria-atomic="true">
         @if (showAlert()) {
-          <div class="flex items-start gap-2.5 p-3.5 rounded-xl bg-error-container text-on-error-container mb-5 transition-opacity duration-200 border border-[#fecdd3]">
-            <span class="material-symbols-outlined text-error text-[20px] shrink-0 select-none mt-0.5">
+          <div id="login-error" data-testid="login-error" class="flex items-start gap-2.5 p-3.5 rounded-xl bg-error-container text-on-error-container mb-5 transition-opacity duration-200 border border-[#fecdd3]">
+            <span class="material-symbols-outlined text-error text-[20px] shrink-0 select-none mt-0.5" aria-hidden="true">
               error
             </span>
             <div class="flex-1 min-w-0">
-              <p class="text-[13px] font-semibold text-error mb-0.5">Credenciales no reconocidas</p>
+              <p class="text-[13px] font-semibold text-error mb-0.5">{{ alertTitle() }}</p>
               <p class="text-[12px] text-on-error-container leading-tight">
                 {{ alertMessage() }}
               </p>
@@ -66,9 +87,10 @@ import { Router } from '@angular/router';
             </button>
           </div>
         }
+        </div>
 
         <!-- Formulario de Acceso -->
-        <form [formGroup]="loginForm" (ngSubmit)="onSubmit()" class="flex flex-col gap-4">
+        <form [formGroup]="loginForm" (ngSubmit)="onSubmit()" [attr.aria-busy]="loading()" novalidate class="flex flex-col gap-4">
           
           <!-- Campo: Correo Electrónico -->
           <div class="flex flex-col gap-1.5">
@@ -86,11 +108,14 @@ import { Router } from '@angular/router';
                 formControlName="email"
                 placeholder="ejemplo@correo.com"
                 autocomplete="email"
+                required
+                [attr.aria-invalid]="emailInvalid()"
+                [attr.aria-describedby]="emailInvalid() ? 'email-error' : null"
                 class="w-full h-11 pl-10 pr-3 rounded-lg bg-surface-container-lowest text-on-surface text-[14px] border border-outline-variant/60 focus:border-secondary focus:ring-2 focus:ring-secondary/20 outline-none transition-all placeholder:text-outline"
               />
             </div>
-            @if (loginForm.get('email')?.invalid && loginForm.get('email')?.touched) {
-              <p class="text-[11px] text-error">Ingresa un correo electrónico válido.</p>
+            @if (emailInvalid()) {
+              <p id="email-error" class="text-[11px] text-error">Ingresa un correo electrónico válido.</p>
             }
           </div>
 
@@ -110,6 +135,9 @@ import { Router } from '@angular/router';
                 formControlName="password"
                 placeholder="••••••••"
                 autocomplete="current-password"
+                required
+                [attr.aria-invalid]="passwordInvalid()"
+                [attr.aria-describedby]="passwordInvalid() ? 'password-error' : null"
                 class="w-full h-11 pl-10 pr-10 rounded-lg bg-surface-container-lowest text-on-surface text-[14px] border border-outline-variant/60 focus:border-secondary focus:ring-2 focus:ring-secondary/20 outline-none transition-all placeholder:text-outline"
               />
               <button
@@ -123,6 +151,9 @@ import { Router } from '@angular/router';
                 </span>
               </button>
             </div>
+            @if (passwordInvalid()) {
+              <p id="password-error" class="text-[11px] text-error">Ingresa tu contraseña.</p>
+            }
           </div>
 
           <!-- Recordarme y Enlace de Recuperación -->
@@ -135,19 +166,19 @@ import { Router } from '@angular/router';
               />
               <span class="text-[13px] text-on-surface-variant">Recordarme</span>
             </label>
-            <button
-              type="button"
-              (click)="goToRecover()"
+            <a
+              routerLink="/recuperar"
               class="text-[13px] font-semibold text-secondary hover:underline transition-all inline-flex items-center gap-0.5 cursor-pointer bg-transparent border-0 p-0"
             >
               <span>¿Olvidaste tu contraseña?</span>
-            </button>
+            </a>
           </div>
 
           <!-- Botón Principal con Estado Interactivo -->
           <div class="pt-2 flex flex-col gap-2">
             <button
               type="submit"
+              data-testid="login-submit"
               [disabled]="loading()"
               class="w-full h-12 rounded-lg bg-primary-container text-white text-[15px] font-semibold hover:bg-primary active:bg-primary shadow-sm hover:shadow-md transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-75"
             >
@@ -159,16 +190,6 @@ import { Router } from '@angular/router';
                 <span class="material-symbols-outlined text-[20px]">arrow_forward</span>
               }
             </button>
-
-            <!-- Acceso Directo de Demostración para evaluación instantánea -->
-            <button
-              type="button"
-              (click)="quickDemoLogin()"
-              class="w-full h-9 rounded-lg bg-surface-container text-secondary hover:bg-surface-container-high text-[12px] font-medium transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-            >
-              <span class="material-symbols-outlined text-[16px]">verified</span>
-              <span>Ingresar directamente con cuenta de prueba (Ana Martínez)</span>
-            </button>
           </div>
         </form>
 
@@ -177,14 +198,13 @@ import { Router } from '@angular/router';
           <p class="text-[13px] text-on-surface-variant mb-2">
             ¿Primera vez que agendas citas en nuestro portal?
           </p>
-          <button
-            type="button"
-            (click)="goToRegister()"
+          <a
+            routerLink="/registro"
             class="inline-flex items-center justify-center gap-1 text-[13px] font-semibold text-secondary hover:text-primary transition-colors cursor-pointer bg-transparent border-0 p-0"
           >
             <span>Crear cuenta de paciente</span>
-            <span class="material-symbols-outlined text-[16px]">open_in_new</span>
-          </button>
+            <span class="material-symbols-outlined text-[16px]" aria-hidden="true">open_in_new</span>
+          </a>
         </div>
 
         <!-- Información Asistencial de Soporte -->
@@ -194,10 +214,10 @@ import { Router } from '@angular/router';
             <span>Mesa de Ayuda (607) 639-2828</span>
           </a>
           <span class="text-surface-dim">•</span>
-          <button type="button" (click)="goToRecover()" class="hover:text-on-surface transition-colors flex items-center gap-1 cursor-pointer bg-transparent border-0 p-0 text-outline">
-            <span class="material-symbols-outlined text-[14px]">verified_user</span>
+          <a routerLink="/recuperar" class="hover:text-on-surface transition-colors flex items-center gap-1 cursor-pointer bg-transparent border-0 p-0 text-outline">
+            <span class="material-symbols-outlined text-[14px]" aria-hidden="true">verified_user</span>
             <span>Términos y Privacidad</span>
-          </button>
+          </a>
         </div>
 
         <!-- Pie Institucional de Confianza Clínica -->
@@ -220,17 +240,38 @@ export class LoginComponent {
   private readonly authService = inject(AuthService);
   private readonly fb = inject(FormBuilder);
 
+  /** Query params enlazados por el router (withComponentInputBinding). */
+  readonly returnUrl = input<string | undefined>();
+  readonly aviso = input<string | undefined>();
+
   readonly buildingImage = HIC_BUILDING_IMG;
   readonly showPassword = signal<boolean>(false);
   readonly loading = signal<boolean>(false);
   readonly showAlert = signal<boolean>(false);
-  readonly alertMessage = signal<string>('Correo electrónico o contraseña incorrectos. Por favor verifica tus datos.');
+  readonly alertTitle = signal<string>('Credenciales no reconocidas');
+  readonly alertMessage = signal<string>('');
+  private readonly submitted = signal<boolean>(false);
 
-  readonly loginForm = this.fb.group({
-    email: ['paciente@fcv.org', [Validators.required, Validators.email]],
-    password: ['ContrasenaSegura2025', [Validators.required]],
-    rememberMe: [true]
+  readonly notice = computed(() => {
+    const value = this.aviso();
+    return !this.submitted() && isLoginNotice(value) ? LOGIN_NOTICES[value] : null;
   });
+
+  readonly loginForm = this.fb.nonNullable.group({
+    email: ['', [Validators.required, Validators.email, Validators.maxLength(254)]],
+    password: ['', [Validators.required, Validators.maxLength(72)]],
+    rememberMe: [false],
+  });
+
+  emailInvalid(): boolean {
+    const control = this.loginForm.controls.email;
+    return control.invalid && control.touched;
+  }
+
+  passwordInvalid(): boolean {
+    const control = this.loginForm.controls.password;
+    return control.invalid && control.touched;
+  }
 
   toggleShowPassword() {
     this.showPassword.update((v) => !v);
@@ -241,6 +282,7 @@ export class LoginComponent {
   }
 
   onSubmit() {
+    if (this.loading()) return;
     if (this.loginForm.invalid) {
       this.loginForm.markAllAsTouched();
       return;
@@ -248,48 +290,24 @@ export class LoginComponent {
 
     this.loading.set(true);
     this.showAlert.set(false);
+    this.submitted.set(true);
 
-    const email = this.loginForm.value.email?.trim() ?? '';
-    const password = this.loginForm.value.password ?? '';
+    const email = this.loginForm.controls.email.value.trim();
+    const password = this.loginForm.controls.password.value;
     this.authService.login(email, password).subscribe({
       next: (user) => {
         this.loading.set(false);
-        void user;
-        void this.router.navigate(['/']);
+        void this.router.navigateByUrl(safeReturnUrl(this.returnUrl()) ?? roleHome(user.roles));
       },
-      error: () => {
+      error: (error: unknown) => {
         this.loading.set(false);
+        this.loginForm.controls.password.reset('');
+        const code = errorCode(error);
+        const credentialError = code === 'INVALID_CREDENTIALS' || code === 'UNAUTHORIZED' || code === 'VALIDATION_ERROR';
+        this.alertTitle.set(credentialError ? 'Credenciales no reconocidas' : 'No fue posible iniciar sesión');
+        this.alertMessage.set(credentialError ? INVALID_CREDENTIALS_MESSAGE : errorMessage(error));
         this.showAlert.set(true);
       },
     });
-  }
-
-  onSubmitLegacy() {
-    this.loading.set(true);
-    this.showAlert.set(false);
-
-    setTimeout(() => {
-      this.loading.set(false);
-      const email = this.loginForm.value.email?.trim().toLowerCase();
-      // Valid credentials or demo
-      if (email === 'paciente@fcv.org' || email === 'ana.martinez@ejemplo.com' || (email && email.includes('@'))) {
-        void this.router.navigate(['/']);
-      } else {
-        this.alertMessage.set('Correo electrónico o contraseña incorrectos. Por favor verifica tus datos.');
-        this.showAlert.set(true);
-      }
-    }, 800);
-  }
-
-  quickDemoLogin() {
-    this.showAlert.set(true);
-  }
-
-  goToRecover() {
-    void this.router.navigate(['/recuperar']);
-  }
-
-  goToRegister() {
-    void this.router.navigate(['/registro']);
   }
 }
