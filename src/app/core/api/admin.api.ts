@@ -200,7 +200,8 @@ export class AdminApi {
     return this.http.get<InboxItemDto[]>(this.url('/inbox'));
   }
 
-  decide(item: Pick<InboxItemDto, 'id' | 'itemType'>, approve: boolean, reason: string): Observable<unknown> {
+  /** HU-018 / HU-022: `{approve, reason}`; rechazar exige motivo (validado también por el backend). */
+  decide(item: Pick<InboxItemDto, 'id' | 'itemType'>, approve: boolean, reason: string | null): Observable<unknown> {
     const path =
       item.itemType === 'RESCHEDULE' ? `/reschedules/${item.id}/decision` : `/appointments/${item.id}/decision`;
     return this.http.post(this.url(path), { approve, reason });
