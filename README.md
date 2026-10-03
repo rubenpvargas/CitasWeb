@@ -72,3 +72,22 @@ la configuración CORS de `citas-api`.
 
 Todas las pantallas (inicio, reserva, mis citas, perfil y operación ADMIN /
 PROFESSIONAL) consumen la API real; no quedan datos simulados en el bundle.
+
+## Pruebas E2E (Playwright)
+
+Escenarios en `e2e/` (registro/login, catálogos ADMIN, bloque PROFESSIONAL,
+reserva general y cancelación, especializada rechazada con motivo,
+reprogramación aprobada y agenda). Se ejecutan en serie contra la SPA y una
+`citas-api` real sembrada por Flyway V5 (usuarios `admin@demo.invalid`,
+`profesional@demo.invalid`, `paciente@demo.invalid`).
+
+```sh
+npx playwright install chromium        # una vez (con proxy TLS: NODE_USE_SYSTEM_CA=1)
+export E2E_DEMO_PASSWORD='<contraseña demo de V5>'   # nunca se versiona
+export E2E_BASE_URL=http://localhost:5173            # opcional (valor por defecto)
+npm run e2e:list                                     # lista los escenarios
+npm run e2e                                          # ejecuta la suite
+```
+
+La SPA toma la URL de la API de su `assets/runtime-config.json`. Sin
+`E2E_DEMO_PASSWORD` los escenarios con usuarios demo se omiten.
