@@ -1,4 +1,15 @@
 #!/bin/sh
 # Ejecuta lint y pruebas antes de publicar.
+# Si Node no está disponible o es anterior a 20 (Angular 21 lo exige), avisa y no bloquea el push.
+# Omitir explícitamente: SKIP_PREPUSH=1 git push
+if [ "${SKIP_PREPUSH:-0}" = "1" ]; then
+  echo "pre-push: omitido por SKIP_PREPUSH=1" >&2
+  exit 0
+fi
+node_major=$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)
+if [ "$node_major" -lt 20 ] 2>/dev/null || [ ! -d node_modules ]; then
+  echo "pre-push: AVISO: Node >= 20 y node_modules son necesarios; no se ejecutaron lint ni pruebas antes del push." >&2
+  exit 0
+fi
 echo "pre-push: npm run lint && ng test" >&2
 npm run lint --silent && npx ng test --watch=false || { echo "pre-push: verificación en rojo, push cancelado." >&2; exit 1; }
