@@ -7,8 +7,17 @@ export const REASON_MAX = 500;
 
 type Mode = 'approve' | 'reject';
 
+export interface DecisionRecord {
+  key: string;
+  itemType: InboxItemDto['itemType'];
+  id: number;
+  approved: boolean;
+  summary: string;
+}
+
 /**
- * HU-018: bandeja ADMIN de solicitudes pendientes. Aprobar pide confirmación;
+ * HU-018 / HU-022: bandeja ADMIN de citas especializadas y reprogramaciones
+ * pendientes, con historial de decisiones de la sesión (aprobada/rechazada). Aprobar pide confirmación;
  * rechazar exige un motivo escrito (validación de UX; el backend responde
  * 409 REJECTION_REASON_REQUIRED / INVALID_TRANSITION).
  */
@@ -37,10 +46,13 @@ type Mode = 'approve' | 'reject';
                   {{ item.itemType === 'RESCHEDULE' ? 'Reprogramación' : 'Cita especializada' }} #{{ item.id }}
                 </h3>
                 <p class="text-sm text-on-surface-variant">
+                  @if (item.itemType === 'RESCHEDULE') { Nueva franja solicitada: }
                   {{ item.specialtyName }} · {{ when(item.startAt) }} · {{ item.locationCode }}
                   @if (item.patientFirstName) { · {{ item.patientFirstName }} {{ item.patientLastName }} }
                 </p>
-                <span class="ui-badge bg-surface-container-high text-primary mt-1">Pendiente</span>
+                <span class="ui-badge bg-surface-container-high text-primary mt-1" [attr.data-testid]="'state-' + itemKey(item)">
+                  {{ item.itemType === 'RESCHEDULE' ? 'Reprogramación pendiente' : 'Pendiente de aprobación' }}
+                </span>
               </div>
               @if (activeKey() !== itemKey(item)) {
                 <div class="flex gap-2">
@@ -56,7 +68,13 @@ type Mode = 'approve' | 'reject';
               <form (submit)="$event.preventDefault(); submit(item)" novalidate class="flex flex-col gap-2 pt-2 border-t border-outline-variant/30"
                 [attr.aria-busy]="deciding()" [attr.data-testid]="'decision-' + itemKey(item)">
                 @if (mode() === 'approve') {
-                  <p class="text-[13px] text-on-surface">¿Confirmas la aprobación de esta solicitud? El horario quedará asignado al paciente.</p>
+                  <p class="text-[13px] text-on-surface">
+                    @if (item.itemType === 'RESCHEDULE') {
+                      ¿Confirmas la reprogramación? La cita adoptará la nueva franja y se liberará el horario anterior.
+                    } @else {
+                      ¿Confirmas la aprobación de esta solicitud? El horario quedará asignado al paciente.
+                    }
+                  </p>
                 } @else {
                   <label [for]="'reason-' + itemKey(item)" class="ui-label">Motivo del rechazo *</label>
                   <textarea [id]="'reason-' + itemKey(item)" rows="3" [attr.maxlength]="reasonMax" class="ui-input h-auto py-2"
@@ -80,6 +98,22 @@ type Mode = 'approve' | 'reject';
           @if (!error()) { <p class="ui-empty" data-testid="inbox-empty">No hay solicitudes pendientes.</p> }
         }
       }
+
+      @if (decisions().length > 0) {
+        <section class="ui-card flex flex-col gap-2" aria-labelledby="decisions-title" data-testid="recent-decisions">
+          <h3 id="decisions-title" class="ui-section-title">Decisiones de esta sesión</h3>
+          <ul class="flex flex-col gap-2">
+            @for (d of decisions(); track d.key) {
+              <li class="ui-row" [attr.data-testid]="'decided-' + d.key">
+                <span class="ui-badge" [class]="d.approved ? 'bg-emerald-50 text-emerald-800' : 'bg-error-container text-error'">
+                  {{ outcomeLabel(d) }}
+                </span>
+                <span class="text-[12px] text-on-surface-variant">{{ d.summary }}</span>
+              </li>
+            }
+          </ul>
+        </section>
+      }
     </section>
   `,
 })
@@ -97,9 +131,24 @@ export class InboxComponent {
   readonly reasonError = signal<string | null>(null);
   readonly decisionError = signal<string | null>(null);
   readonly deciding = signal(false);
+  readonly decisions = signal<DecisionRecord[]>([]);
 
   constructor() {
     this.load();
+  }
+
+  outcomeLabel(d: DecisionRecord): string {
+    const kind = d.itemType === 'RESCHEDULE' ? 'Reprogramación' : 'Solicitud';
+    return `${kind} ${d.approved ? 'aprobada' : 'rechazada'}`;
+  }
+
+  private summarize(item: InboxItemDto, approved: boolean): string {
+    if (item.itemType === 'RESCHEDULE') {
+      return approved
+        ? `#${item.id}: la cita adopta la nueva franja (${this.when(item.startAt)}).`
+        : `#${item.id}: la cita conserva su horario original.`;
+    }
+    return approved ? `#${item.id}: cita confirmada para ${this.when(item.startAt)}.` : `#${item.id}: cupos liberados.`;
   }
 
   itemKey(item: InboxItemDto): string {
@@ -157,7 +206,11 @@ export class InboxComponent {
       next: () => {
         this.deciding.set(false);
         this.activeKey.set(null);
-        this.message.set(`${approve ? 'Aprobada' : 'Rechazada'} la solicitud #${item.id}.`);
+        this.message.set(`${approve ? 'Aprobada' : 'Rechazada'} la ${item.itemType === 'RESCHEDULE' ? 'reprogramación' : 'solicitud'} #${item.id}.`);
+        this.decisions.update((list) => [
+          { key: this.itemKey(item), itemType: item.itemType, id: item.id, approved: approve, summary: this.summarize(item, approve) },
+          ...list,
+        ]);
         this.load();
       },
       error: (e: unknown) => {
