@@ -10,11 +10,17 @@ export interface CalendarDay {
   blocks: CalendarBlockDto[];
 }
 
+const PAST_REASON = 'Bloque pasado o en curso: no se puede modificar ni eliminar.';
+const COMMITTED_REASON = 'Tiene citas reservadas o retenidas: no se puede modificar ni eliminar.';
+
 /** Motivo visible cuando el backend marca un bloque como no editable (HU-013/014). */
 export function lockReason(block: CalendarBlockDto, now: string = nowInBogota()): string | null {
   if (block.editable) return null;
-  if (`${block.date}T${hhmm(block.startTime)}` <= now) return 'Bloque pasado o en curso: no se puede modificar ni eliminar.';
-  if (block.committedSlots > 0) return 'Tiene citas reservadas o retenidas: no se puede modificar ni eliminar.';
+  // Se prefiere el motivo del backend; la derivación local es solo respaldo.
+  if (block.notEditableReason === 'PAST_BLOCK') return PAST_REASON;
+  if (block.notEditableReason === 'BLOCK_COMMITTED') return COMMITTED_REASON;
+  if (`${block.date}T${hhmm(block.startTime)}` <= now) return PAST_REASON;
+  if (block.committedSlots > 0) return COMMITTED_REASON;
   return 'El servidor no permite modificar este bloque.';
 }
 
@@ -264,7 +270,7 @@ export class BlocksComponent {
     this.rowErrorFor.set(b.id);
     this.rowError.set(errorMessage(e, fallback));
     // El estado del bloque cambió en el servidor: se refresca para mostrar el motivo actualizado.
-    if (['PAST_BLOCK', 'BLOCK_COMMITTED', 'COMMITTED_BLOCK', 'NOT_FOUND'].includes(errorCode(e))) {
+    if (['PAST_BLOCK', 'BLOCK_COMMITTED', 'NOT_FOUND'].includes(errorCode(e))) {
       this.editingId.set(null);
       this.deletingId.set(null);
       this.refreshKeepingError();

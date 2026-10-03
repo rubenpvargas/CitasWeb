@@ -34,18 +34,31 @@ el bundle no contiene ninguna URL de API fija.
 
 ## Docker
 
-`Dockerfile` construye la SPA y la sirve con Nginx (con fallback a
-`index.html` para las rutas del router). Al arrancar el contenedor,
-`docker/entrypoint.sh` genera `assets/runtime-config.json` a partir de la
-variable `API_URL`:
+`Dockerfile` construye la SPA y la sirve con **nginx sin privilegios**
+(`nginxinc/nginx-unprivileged`, usuario 101) en el **puerto 8080** del
+contenedor, con fallback a `index.html` para las rutas del router y
+`GET /health` (usado por el `HEALTHCHECK`).
+
+Al arrancar, `docker/entrypoint.sh`:
+
+- falla de inmediato con un mensaje claro si `API_URL` está vacía o no empieza
+  por `http://`/`https://`;
+- genera `assets/runtime-config.json` a partir de `API_URL`;
+- genera la cabecera `Content-Security-Policy` con `connect-src` limitado al
+  origen de `API_URL`.
+
+`index.html` y `runtime-config.json` se sirven con `Cache-Control: no-store`;
+los artefactos con hash (`main-XXXX.js`, `chunk-XXXX.js`, `styles-XXXX.css`)
+con caché larga e inmutable. Se añaden `X-Content-Type-Options`,
+`Referrer-Policy`, `X-Frame-Options` y `Permissions-Policy`.
 
 ```sh
 docker build -t citas-web .
-docker run -p 8081:80 -e API_URL=http://localhost:8080 citas-web
+docker run -p 8081:8080 -e API_URL=http://localhost:8080 citas-web
 ```
 
-El origen del frontend debe estar permitido en la configuración CORS de
-`citas-api`.
+El origen del frontend (p. ej. `http://localhost:8081`) debe estar permitido en
+la configuración CORS de `citas-api`.
 
 ## Rutas y sesión
 
@@ -57,6 +70,24 @@ El origen del frontend debe estar permitido en la configuración CORS de
   ante `401` y, si la renovación falla, vuelve a `/login`. Los guards y el menú
   por rol son solo experiencia de usuario: la autorización final es del backend.
 
-Las pantallas de inicio, reserva, citas, perfil y operación aún muestran parte
-de los datos sintéticos del prototipo (`src/app/services/legacy-mock.ts`) hasta
-que se implementen sus historias de usuario.
+Todas las pantallas (inicio, reserva, mis citas, perfil y operación ADMIN /
+PROFESSIONAL) consumen la API real; no quedan datos simulados en el bundle.
+
+## Pruebas E2E (Playwright)
+
+Escenarios en `e2e/` (registro/login, catálogos ADMIN, bloque PROFESSIONAL,
+reserva general y cancelación, especializada rechazada con motivo,
+reprogramación aprobada y agenda). Se ejecutan en serie contra la SPA y una
+`citas-api` real sembrada por Flyway V5 (usuarios `admin@demo.invalid`,
+`profesional@demo.invalid`, `paciente@demo.invalid`).
+
+```sh
+npx playwright install chromium        # una vez (con proxy TLS: NODE_USE_SYSTEM_CA=1)
+export E2E_DEMO_PASSWORD='<contraseña demo de V5>'   # nunca se versiona
+export E2E_BASE_URL=http://localhost:5173            # opcional (valor por defecto)
+npm run e2e:list                                     # lista los escenarios
+npm run e2e                                          # ejecuta la suite
+```
+
+La SPA toma la URL de la API de su `assets/runtime-config.json`. Sin
+`E2E_DEMO_PASSWORD` los escenarios con usuarios demo se omiten.

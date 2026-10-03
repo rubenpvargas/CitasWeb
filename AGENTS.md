@@ -31,9 +31,10 @@ Verificado el 2026-10-02 en la rama `develop`:
   `src/styles.css`, plantillas de `src/app/components/`) es la referencia
   visual. Los ZIP `portal-de-citas*.zip` de la raíz son exportaciones
   originales del prototipo.
-- **Pendiente (olas posteriores):** inicio, reserva, mis citas, perfil y
-  operación aún usan datos sintéticos de `src/app/services/legacy-mock.ts` o
-  llamadas parciales; se sustituirán con sus HU.
+- **Pantallas con datos reales:** todas las pantallas consumen la API (HU-001 a
+  HU-025); no quedan datos simulados. Las imágenes institucionales están en
+  `src/app/services/brand-assets.ts`. Los clientes REST por área viven en
+  `src/app/core/api/` y los fixtures sintéticos de prueba en `src/app/testing/`.
 
 ## Responsabilidad exclusiva
 

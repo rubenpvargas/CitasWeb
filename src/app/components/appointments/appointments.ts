@@ -1,20 +1,41 @@
-import { ChangeDetectionStrategy, Component, inject, signal, computed } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
-import { PortalService } from '../../services/portal.service';
-import { Cita } from '../../models/portal.types';
+import { A11yModule } from '@angular/cdk/a11y';
+import { AppointmentsApi, RescheduleResponse } from '../../core/api/appointments.api';
+import { RescheduleDialogComponent } from './reschedule-dialog';
+import { AppointmentDto } from '../../core/api/availability.api';
+import { APPOINTMENT_STATUS_LABELS, appointmentStatusLabel } from '../../core/api/appointment-status';
+import { errorCode, errorMessage } from '../../core/api/api-errors';
+import { MAX_RANGE_DAYS, dateOf, daysBetween, formatLongDate, timeOf } from '../../core/time/bogota-time';
 
+/** Clases del distintivo por estado (paleta del diseño aprobado). */
+export const STATUS_BADGE: Record<string, string> = {
+  REQUESTED: 'bg-surface-container-high text-primary border-outline-variant/40',
+  APPROVED: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+  REJECTED: 'bg-error-container text-error border-[#fecdd3]',
+  CANCELLED: 'bg-error-container text-error border-[#fecdd3]',
+  COMPLETED: 'bg-surface-container text-on-surface-variant border-outline-variant/40',
+  NO_SHOW: 'bg-surface-container text-on-surface-variant border-outline-variant/40',
+};
+
+/**
+ * HU-019: "Mis citas" con datos reales (`GET /appointments?status&from&to`).
+ * Etiquetas por estado, motivo de rechazo, reprogramación pendiente y las
+ * banderas `cancellable`/`reschedulable` calculadas por el backend.
+ */
 @Component({
   selector: 'app-appointments',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [A11yModule, RescheduleDialogComponent],
   template: `
     <header class="sticky top-0 w-full z-40 bg-surface-container-lowest/95 backdrop-blur-md shadow-xs border-b border-outline-variant/30">
       <div class="h-16 px-4 flex items-center justify-between max-w-lg mx-auto w-full">
         <div class="flex items-center gap-3">
           <div class="w-8 h-8 rounded-xl bg-primary-container text-white flex items-center justify-center">
-            <span class="material-symbols-outlined text-[20px]">calendar_month</span>
+            <span class="material-symbols-outlined text-[20px]" aria-hidden="true">calendar_month</span>
           </div>
           <div class="flex flex-col">
-            <span class="text-[15px] font-semibold text-primary tracking-tight leading-none">Mis Citas Médicas</span>
+            <h1 class="text-[15px] font-semibold text-primary tracking-tight leading-none m-0">Mis Citas Médicas</h1>
             <span class="text-[11px] text-on-surface-variant leading-none mt-1 font-medium">Gestión y Seguimiento</span>
           </div>
         </div>
@@ -23,7 +44,7 @@ import { Cita } from '../../models/portal.types';
           (click)="goToBooking()"
           class="flex items-center gap-1 bg-primary-container text-white text-[12px] font-semibold px-3 py-1.5 rounded-lg hover:bg-primary transition-colors cursor-pointer border-0"
         >
-          <span class="material-symbols-outlined text-[16px]">add</span>
+          <span class="material-symbols-outlined text-[16px]" aria-hidden="true">add</span>
           <span>Nueva</span>
         </button>
       </div>
@@ -32,196 +53,269 @@ import { Cita } from '../../models/portal.types';
     <main class="flex-1 flex flex-col relative w-full max-w-lg mx-auto px-4 pt-3 pb-28 bg-surface">
       <div class="flex flex-col w-full gap-4">
 
-        <!-- Selector de Pestañas -->
-        <div class="grid grid-cols-3 p-1 rounded-xl bg-surface-container-low border border-outline-variant/40 text-center">
-          <button
-            type="button"
-            (click)="activeTab.set('proximas')"
-            [class.bg-surface-container-lowest]="activeTab() === 'proximas'"
-            [class.text-primary]="activeTab() === 'proximas'"
-            [class.font-semibold]="activeTab() === 'proximas'"
-            [class.shadow-xs]="activeTab() === 'proximas'"
-            class="py-2 rounded-lg text-[13px] text-on-surface-variant transition-all cursor-pointer border-0"
-          >
-            Próximas ({{ upcomingList().length }})
-          </button>
-          <button
-            type="button"
-            (click)="activeTab.set('historial')"
-            [class.bg-surface-container-lowest]="activeTab() === 'historial'"
-            [class.text-primary]="activeTab() === 'historial'"
-            [class.font-semibold]="activeTab() === 'historial'"
-            [class.shadow-xs]="activeTab() === 'historial'"
-            class="py-2 rounded-lg text-[13px] text-on-surface-variant transition-all cursor-pointer border-0"
-          >
-            Historial ({{ pastList().length }})
-          </button>
-          <button
-            type="button"
-            (click)="activeTab.set('canceladas')"
-            [class.bg-surface-container-lowest]="activeTab() === 'canceladas'"
-            [class.text-primary]="activeTab() === 'canceladas'"
-            [class.font-semibold]="activeTab() === 'canceladas'"
-            [class.shadow-xs]="activeTab() === 'canceladas'"
-            class="py-2 rounded-lg text-[13px] text-on-surface-variant transition-all cursor-pointer border-0"
-          >
-            Canceladas ({{ cancelledList().length }})
-          </button>
+        <!-- Filtros -->
+        <form (submit)="$event.preventDefault(); load()" class="p-3 rounded-xl bg-surface-container-low border border-outline-variant/40 grid grid-cols-2 gap-2" data-testid="appointments-filters" aria-label="Filtrar citas">
+          <div class="flex flex-col gap-1 col-span-2">
+            <label for="ap-status" class="text-[12px] text-on-surface-variant font-medium">Estado</label>
+            <select id="ap-status" class="ui-input" (change)="status.set($any($event.target).value)">
+              <option value="">Todos los estados</option>
+              @for (s of statusOptions; track s.code) { <option [value]="s.code">{{ s.label }}</option> }
+            </select>
+          </div>
+          <div class="flex flex-col gap-1">
+            <label for="ap-from" class="text-[12px] text-on-surface-variant font-medium">Desde</label>
+            <input id="ap-from" type="date" class="ui-input" [value]="from()" (change)="from.set($any($event.target).value)" />
+          </div>
+          <div class="flex flex-col gap-1">
+            <label for="ap-to" class="text-[12px] text-on-surface-variant font-medium">Hasta</label>
+            <input id="ap-to" type="date" class="ui-input" [value]="to()" (change)="to.set($any($event.target).value)" />
+          </div>
+          <button type="submit" class="ui-btn-secondary col-span-2" data-testid="appointments-apply" [disabled]="loading()">Aplicar filtros</button>
+        </form>
+
+        <div role="status" aria-live="polite">
+          @if (loading()) { <p class="ui-empty" data-testid="appointments-loading">Cargando tus citas...</p> }
+          @if (message()) { <p class="ui-alert-success" data-testid="appointments-message">{{ message() }}</p> }
+        </div>
+        <div role="alert" aria-live="assertive" aria-atomic="true">
+          @if (error()) { <p class="ui-alert-error" data-testid="appointments-error">{{ error() }}</p> }
         </div>
 
         <!-- Lista de Citas -->
-        <div class="flex flex-col gap-3">
-          @if (currentList().length === 0) {
-            <div class="rounded-2xl bg-surface-container-lowest shadow-xs p-8 flex flex-col items-center text-center gap-2 border border-outline-variant/30">
-              <span class="material-symbols-outlined text-[36px] text-outline">event_busy</span>
-              <p class="text-base font-semibold text-primary">No hay citas en esta sección</p>
-              <p class="text-[13px] text-on-surface-variant max-w-xs">
-                @if (activeTab() === 'proximas') {
-                  Puedes programar una cita con nuestros especialistas en pocos minutos.
-                } @else {
-                  No se registran citas en este historial.
-                }
-              </p>
-              @if (activeTab() === 'proximas') {
-                <button
-                  type="button"
-                  (click)="goToBooking()"
-                  class="mt-2 px-4 py-2 rounded-lg bg-primary-container text-white text-[13px] font-semibold cursor-pointer border-0"
-                >
-                  Agendar consulta ahora
-                </button>
-              }
-            </div>
-          } @else {
-            @for (cita of currentList(); track cita.id) {
-              <div class="rounded-2xl bg-surface-container-lowest shadow-xs p-4 flex flex-col gap-3 border border-outline-variant/40">
+        @if (!loading() && !error()) {
+          <ul class="flex flex-col gap-3" aria-label="Citas">
+            @for (cita of appointments(); track cita.id) {
+              <li class="rounded-2xl bg-surface-container-lowest shadow-xs p-4 flex flex-col gap-3 border border-outline-variant/40" [attr.data-testid]="'appointment-' + cita.id">
                 <div class="flex items-start justify-between gap-2">
                   <div class="flex flex-col min-w-0">
                     <div class="flex items-center gap-1.5 mb-1">
-                      <span
-                        [class.bg-emerald-50]="cita.status === 'Confirmada'"
-                        [class.text-emerald-800]="cita.status === 'Confirmada'"
-                        [class.border-emerald-200]="cita.status === 'Confirmada'"
-                        [class.bg-surface-container]="cita.status === 'Atendida'"
-                        [class.text-on-surface-variant]="cita.status === 'Atendida'"
-                        [class.bg-error-container]="cita.status === 'Cancelada'"
-                        [class.text-error]="cita.status === 'Cancelada'"
-                        class="px-2.5 py-0.5 rounded-full text-[11px] font-semibold border"
-                      >
-                        {{ cita.status }}
+                      <span class="px-2.5 py-0.5 rounded-full text-[11px] font-semibold border" [class]="badge(cita.status)" [attr.data-testid]="'status-' + cita.id">
+                        {{ label(cita.status) }}
                       </span>
-                      <span class="text-[11px] text-on-surface-variant">· {{ cita.modality }}</span>
+                      <span class="text-[11px] text-on-surface-variant">· N.º {{ cita.id }}</span>
                     </div>
-                    <h3 class="text-[15px] font-semibold text-primary truncate">{{ cita.specialty }}</h3>
-                    <p class="text-[13px] text-on-surface-variant">{{ cita.doctorName }}</p>
+                    <h2 class="text-[15px] font-semibold text-primary truncate m-0">{{ cita.specialtyName }}</h2>
+                    <p class="text-[13px] text-on-surface-variant">{{ cita.professionalName }}</p>
                   </div>
                   <div class="w-10 h-10 rounded-xl bg-surface-container-low flex items-center justify-center text-primary shrink-0">
-                    <span class="material-symbols-outlined text-[20px]">{{ cita.icon }}</span>
+                    <span class="material-symbols-outlined text-[20px]" aria-hidden="true">event</span>
                   </div>
                 </div>
 
                 <div class="bg-surface-container-low/70 p-3 rounded-xl flex flex-col gap-1 text-[12px] border border-outline-variant/20">
                   <div class="flex items-center gap-1.5 font-semibold text-primary">
-                    <span class="material-symbols-outlined text-[16px] text-secondary">calendar_today</span>
-                    <span>{{ cita.date }} · {{ cita.time }}</span>
+                    <span class="material-symbols-outlined text-[16px] text-secondary" aria-hidden="true">calendar_today</span>
+                    <span class="capitalize">{{ longDate(cita.startAt) }} · {{ time(cita.startAt) }}–{{ time(cita.endAt) }}</span>
                   </div>
                   <div class="flex items-start gap-1.5 text-on-surface-variant pt-0.5">
-                    <span class="material-symbols-outlined text-[16px] text-outline shrink-0">location_on</span>
-                    <span>{{ cita.sede }} - {{ cita.locationDetails }}</span>
+                    <span class="material-symbols-outlined text-[16px] text-outline shrink-0" aria-hidden="true">location_on</span>
+                    <span>{{ cita.locationName || cita.locationCode }}</span>
                   </div>
+                  @if (cita.reason) {
+                    <p class="text-on-surface-variant pt-0.5"><strong>Motivo:</strong> {{ cita.reason }}</p>
+                  }
                 </div>
 
-                @if (cita.status === 'Confirmada') {
+                @if (cita.status === 'REJECTED' && cita.rejectionReason) {
+                  <p class="ui-alert-error" [attr.data-testid]="'rejection-' + cita.id">
+                    <span class="material-symbols-outlined text-error text-[18px]" aria-hidden="true">info</span>
+                    <span><strong>Motivo del rechazo:</strong> {{ cita.rejectionReason }}</span>
+                  </p>
+                }
+                @if (cita.status === 'REQUESTED') {
+                  <p class="text-[12px] text-on-surface-variant flex items-center gap-1.5">
+                    <span class="material-symbols-outlined text-[16px] text-secondary" aria-hidden="true">hourglass_top</span>
+                    Pendiente de aprobación administrativa; el horario está reservado para ti.
+                  </p>
+                }
+                @if (cita.cancellable || cita.reschedulable) {
                   <div class="flex items-center gap-2 pt-1 border-t border-outline-variant/20">
-                    <button
-                      type="button"
-                      (click)="openPrep(cita)"
-                      class="flex-1 py-2 rounded-lg bg-surface-container text-primary text-[12px] font-semibold hover:bg-surface-container-high transition-colors cursor-pointer border-0"
-                    >
-                      Ver preparación
-                    </button>
-                    <button
-                      type="button"
-                      (click)="cancelCita(cita.id)"
-                      class="py-2 px-3 rounded-lg text-error hover:bg-error-container text-[12px] font-semibold transition-colors cursor-pointer border-0 bg-transparent"
-                    >
-                      Cancelar cita
-                    </button>
+                    @if (cita.reschedulable) {
+                      <button type="button" (click)="openReschedule(cita)" [attr.data-testid]="'reschedule-' + cita.id"
+                        [attr.aria-label]="'Reprogramar cita ' + cita.id + ' de ' + cita.specialtyName"
+                        class="flex-1 py-2 rounded-lg bg-surface-container text-primary text-[12px] font-semibold hover:bg-surface-container-high transition-colors cursor-pointer border-0">
+                        Reprogramar
+                      </button>
+                    }
+                    @if (cita.cancellable) {
+                      <button type="button" (click)="askCancel(cita)" [attr.data-testid]="'cancel-' + cita.id"
+                        [attr.aria-label]="'Cancelar cita ' + cita.id + ' de ' + cita.specialtyName"
+                        class="py-2 px-3 rounded-lg text-error hover:bg-error-container text-[12px] font-semibold transition-colors cursor-pointer border-0 bg-transparent">
+                        Cancelar cita
+                      </button>
+                    }
                   </div>
                 }
-              </div>
-            }
-          }
-        </div>
-
-      </div>
-    </main>
-
-    <!-- Modal de Preparación -->
-    @if (prepCita(); as cita) {
-      <div class="fixed inset-0 z-50 bg-[#283044]/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
-        <div class="w-full max-w-md bg-surface-container-lowest rounded-2xl p-6 shadow-xl flex flex-col gap-4 border border-outline-variant/40">
-          <div class="flex items-center justify-between pb-2 border-b border-outline-variant/30">
-            <h3 class="text-base font-semibold text-primary">Preparación para la Cita</h3>
-            <button type="button" (click)="closePrep()" class="p-1 text-outline hover:text-on-surface rounded-full cursor-pointer border-0 bg-transparent">
-              <span class="material-symbols-outlined text-[20px]">close</span>
-            </button>
-          </div>
-          <p class="text-[13px] text-on-surface font-medium">{{ cita.specialty }} con {{ cita.doctorName }}</p>
-          <ul class="flex flex-col gap-2">
-            @for (item of cita.preparation; track item; let i = $index) {
-              <li class="flex items-start gap-2 text-[13px] text-on-surface">
-                <span class="w-5 h-5 rounded-full bg-secondary-container/40 text-secondary font-bold text-[11px] flex items-center justify-center shrink-0 mt-0.5">{{ i + 1 }}</span>
-                <span>{{ item }}</span>
+                @if (cita.pendingReschedule; as r) {
+                  <p class="text-[12px] text-primary flex items-center gap-1.5 p-2 rounded-lg bg-surface-container" [attr.data-testid]="'pending-reschedule-' + cita.id">
+                    <span class="material-symbols-outlined text-[16px] text-secondary" aria-hidden="true">update</span>
+                    Reprogramación solicitada para {{ longDate(r.requestedStartAt) }} a las {{ time(r.requestedStartAt) }} ({{ r.locationCode }}), pendiente de aprobación.
+                  </p>
+                }
+              </li>
+            } @empty {
+              <li class="rounded-2xl bg-surface-container-lowest shadow-xs p-8 flex flex-col items-center text-center gap-2 border border-outline-variant/30" data-testid="appointments-empty">
+                <span class="material-symbols-outlined text-[36px] text-outline" aria-hidden="true">event_busy</span>
+                <p class="text-base font-semibold text-primary">No hay citas con estos filtros</p>
+                <p class="text-[13px] text-on-surface-variant max-w-xs">Puedes programar una cita con nuestros especialistas en pocos minutos.</p>
+                <button type="button" (click)="goToBooking()" class="mt-2 px-4 py-2 rounded-lg bg-primary-container text-white text-[13px] font-semibold cursor-pointer border-0">
+                  Agendar consulta ahora
+                </button>
               </li>
             }
           </ul>
-          <button type="button" (click)="closePrep()" class="w-full h-10 rounded-lg bg-primary-container text-white text-[13px] font-semibold cursor-pointer border-0">
-            Entendido
-          </button>
+        }
+      </div>
+    </main>
+
+    @if (rescheduleTarget(); as target) {
+      <app-reschedule-dialog [appointment]="target" (requested)="onRescheduled($event)" (closed)="rescheduleTarget.set(null)" />
+    }
+
+    <!-- Diálogo accesible de cancelación (HU-020) -->
+    @if (cancelTarget(); as target) {
+      <div class="fixed inset-0 z-50 bg-[#283044]/60 backdrop-blur-xs flex items-center justify-center p-4">
+        <div role="alertdialog" aria-modal="true" aria-labelledby="cancel-title" aria-describedby="cancel-desc" data-testid="cancel-dialog"
+          cdkTrapFocus [cdkTrapFocusAutoCapture]="true" (keydown.escape)="closeCancel()"
+          class="w-full max-w-sm bg-surface-container-lowest rounded-2xl p-6 shadow-xl flex flex-col gap-3 border border-outline-variant/40">
+          <h2 id="cancel-title" class="text-lg font-semibold text-primary m-0">¿Cancelar esta cita?</h2>
+          <p id="cancel-desc" class="text-[13px] text-on-surface-variant leading-relaxed">
+            {{ target.specialtyName }} con {{ target.professionalName }}, {{ longDate(target.startAt) }} a las {{ time(target.startAt) }}.
+            El horario quedará libre para otro paciente y la cancelación no se puede deshacer.
+          </p>
+          @if (cancelError()) { <p class="ui-alert-error" role="alert" data-testid="cancel-error">{{ cancelError() }}</p> }
+          <div class="flex gap-2 pt-1">
+            <button type="button" class="ui-btn-secondary flex-1" (click)="closeCancel()" [disabled]="cancelling()" data-testid="cancel-dismiss">Volver</button>
+            <button type="button" data-testid="cancel-confirm" (click)="confirmCancel()" [disabled]="cancelling()"
+              class="flex-1 h-11 rounded-lg bg-error text-white text-[14px] font-semibold border-0 cursor-pointer disabled:opacity-60">
+              {{ cancelling() ? 'Cancelando...' : 'Sí, cancelar cita' }}
+            </button>
+          </div>
         </div>
       </div>
     }
-  `
+  `,
 })
 export class AppointmentsComponent {
-  private readonly portalService = inject(PortalService);
+  protected readonly api = inject(AppointmentsApi);
   private readonly router = inject(Router);
 
-  readonly activeTab = signal<'proximas' | 'historial' | 'canceladas'>('proximas');
-  readonly prepCita = signal<Cita | null>(null);
+  readonly statusOptions = Object.entries(APPOINTMENT_STATUS_LABELS).map(([code, label]) => ({ code, label }));
+  readonly status = signal('');
+  readonly from = signal('');
+  readonly to = signal('');
 
-  readonly upcomingList = this.portalService.upcomingCitas;
-  readonly pastList = this.portalService.pastCitas;
-  readonly cancelledList = this.portalService.cancelledCitas;
+  readonly appointments = signal<AppointmentDto[]>([]);
+  readonly loading = signal(false);
+  readonly error = signal<string | null>(null);
+  readonly message = signal('');
+
+  // HU-020 cancelación
+  readonly cancelTarget = signal<AppointmentDto | null>(null);
+  readonly cancelling = signal(false);
+  readonly cancelError = signal<string | null>(null);
 
   constructor() {
-    this.portalService.loadAppointments();
+    this.load();
   }
 
-  readonly currentList = computed(() => {
-    switch (this.activeTab()) {
-      case 'proximas': return this.upcomingList();
-      case 'historial': return this.pastList();
-      case 'canceladas': return this.cancelledList();
+  // HU-021 reprogramación
+  readonly rescheduleTarget = signal<AppointmentDto | null>(null);
+
+  openReschedule(cita: AppointmentDto) {
+    this.message.set('');
+    this.rescheduleTarget.set(cita);
+  }
+
+  onRescheduled(response: RescheduleResponse) {
+    this.rescheduleTarget.set(null);
+    this.message.set(
+      `Solicitud de reprogramación enviada para el ${this.longDate(response.requestedStartAt)} a las ${this.time(response.requestedStartAt)}. Tu cita actual se mantiene hasta la decisión.`,
+    );
+    this.load();
+  }
+
+  askCancel(cita: AppointmentDto) {
+    this.message.set('');
+    this.cancelError.set(null);
+    this.cancelTarget.set(cita);
+  }
+
+  closeCancel() {
+    if (this.cancelling()) return;
+    this.cancelTarget.set(null);
+  }
+
+  confirmCancel() {
+    const target = this.cancelTarget();
+    if (!target || this.cancelling()) return;
+    this.cancelling.set(true);
+    this.cancelError.set(null);
+    this.api.cancel(target.id).subscribe({
+      next: () => {
+        this.cancelling.set(false);
+        this.cancelTarget.set(null);
+        this.message.set(`Cita N.º ${target.id} cancelada. El horario quedó disponible.`);
+        this.load();
+      },
+      error: (e: unknown) => {
+        this.cancelling.set(false);
+        this.cancelError.set(errorMessage(e, 'No fue posible cancelar la cita.'));
+        // El estado cambió en el servidor: se refresca la lista detrás del diálogo.
+        if (['INVALID_TRANSITION', 'PAST_APPOINTMENT', 'NOT_FOUND'].includes(errorCode(e))) this.load();
+      },
+    });
+  }
+
+  label(status: string): string {
+    return appointmentStatusLabel(status);
+  }
+
+  badge(status: string): string {
+    return STATUS_BADGE[status] ?? STATUS_BADGE['COMPLETED'];
+  }
+
+  longDate(value: string): string {
+    return formatLongDate(dateOf(value));
+  }
+
+  time(value: string): string {
+    return timeOf(value);
+  }
+
+  load() {
+    const from = this.from();
+    const to = this.to();
+    if ((from && !to) || (!from && to)) {
+      this.error.set('Indica ambas fechas del rango o ninguna.');
+      return;
     }
-  });
+    if (from && to) {
+      const span = daysBetween(from, to);
+      if (span < 0) {
+        this.error.set('La fecha inicial debe ser anterior o igual a la final.');
+        return;
+      }
+      if (span > MAX_RANGE_DAYS) {
+        this.error.set(`El rango no puede superar ${MAX_RANGE_DAYS} días.`);
+        return;
+      }
+    }
+    this.loading.set(true);
+    this.error.set(null);
+    this.api.list({ status: this.status() || null, from: from || null, to: to || null }).subscribe({
+      next: (list) => {
+        this.appointments.set([...list].sort((a, b) => b.startAt.localeCompare(a.startAt)));
+        this.loading.set(false);
+      },
+      error: (e: unknown) => {
+        this.error.set(errorMessage(e, 'No fue posible cargar tus citas.'));
+        this.loading.set(false);
+      },
+    });
+  }
 
   goToBooking() {
     void this.router.navigate(['/reservar']);
-  }
-
-  openPrep(cita: Cita) {
-    this.prepCita.set(cita);
-  }
-
-  closePrep() {
-    this.prepCita.set(null);
-  }
-
-  cancelCita(id: string) {
-    if (confirm('¿Estás seguro de que deseas cancelar esta cita médica? Esta acción liberará el cupo para otro paciente.')) {
-      this.portalService.cancelAppointment(id);
-    }
   }
 }

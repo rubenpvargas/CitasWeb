@@ -4,3 +4,6 @@ dist
 .env*
 .git
 *.zip
+e2e
+playwright-report
+test-results

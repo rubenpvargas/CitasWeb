@@ -97,3 +97,43 @@ describe('CatalogApi', () => {
     http.expectOne({ method: 'GET', url: `${TEST_API_URL}/api/v1/specialties` }).flush([]);
   });
 });
+
+describe('AdminApi.listInbox (HU-025)', () => {
+  let api: AdminApi;
+  let http: HttpTestingController;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({ providers: [provideHttpClient(), provideHttpClientTesting()] });
+    TestBed.inject(AppConfigService).set({ apiUrl: TEST_API_URL });
+    api = TestBed.inject(AdminApi);
+    http = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => http.verify());
+
+  it('envía solo los filtros presentes', () => {
+    api.listInbox({ locationCode: 'HIC', professionalId: 9, specialtyId: null, from: '2099-01-01', to: '' }).subscribe();
+    const req = http.expectOne((r) => r.url === `${A}/inbox`);
+    expect(req.request.params.keys().sort()).toEqual(['from', 'locationCode', 'professionalId']);
+    expect(req.request.params.get('professionalId')).toBe('9');
+    req.flush({ appointments: [], reschedules: [] });
+  });
+
+  it('normaliza {appointments, reschedules} y la lista plana anterior', () => {
+    let items: { itemType: string; startAt: string; patientName?: string; currentStartAt?: string }[] = [];
+    api.listInbox().subscribe((r) => (items = r));
+    http.expectOne((r) => r.url === `${A}/inbox`).flush({
+      appointments: [{ id: 1, startAt: '2099-01-02T08:00:00', specialtyName: 'Cardio', locationCode: 'HIC', patientName: 'Ana P.' }],
+      reschedules: [{ id: 5, currentStartAt: '2099-01-03T08:00:00', requestedStartAt: '2099-01-04T09:00:00', specialtyName: 'Cardio', locationCode: 'ICV', patientFirstName: 'Luis', patientLastName: 'Q' }],
+    });
+    expect(items.map((i) => i.itemType)).toEqual(['APPOINTMENT', 'RESCHEDULE']);
+    expect(items[1].startAt).toBe('2099-01-04T09:00:00');
+    expect(items[1].currentStartAt).toBe('2099-01-03T08:00:00');
+    expect(items[1].patientName).toBe('Luis Q');
+
+    api.listInbox().subscribe((r) => (items = r));
+    http.expectOne((r) => r.url === `${A}/inbox`).flush([{ itemType: 'RESCHEDULE', id: 6, startAt: '2099-01-05T08:00:00', status: 'PENDING', specialtyName: 'X', locationCode: 'HIC' }]);
+    expect(items[0].itemType).toBe('RESCHEDULE');
+    expect(items[0].startAt).toBe('2099-01-05T08:00:00');
+  });
+});

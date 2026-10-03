@@ -141,6 +141,24 @@ describe('EpsAdminComponent (HU-008)', () => {
     expect(el.textContent).toContain('Plan Dos');
   });
 
+  it('usa el id de régimen del catálogo cuando el backend lo expone', async () => {
+    fixture = TestBed.createComponent(EpsAdminComponent);
+    el = fixture.nativeElement;
+    await fixture.whenStable();
+    const cat = catalogsFixture();
+    http.expectOne(`${TEST_API_URL}/api/v1/catalogs`).flush({ ...cat, insuranceRegimes: [{ id: 2, code: 'SUBSIDIADO', name: 'Subsidiado' }] });
+    http.expectOne(`${A}/eps`).flush(EPS);
+    await fixture.whenStable();
+    buttonByText('Planes').click();
+    http.expectOne((r) => r.url === `${A}/plans`).flush([]);
+    await fixture.whenStable();
+    type('plan-code', 'P-S');
+    type('plan-name', 'Plan S');
+    type('plan-regime', 'SUBSIDIADO');
+    (q('[data-testid="plan-form"]') as HTMLFormElement).dispatchEvent(new Event('submit'));
+    expect(http.expectOne({ method: 'POST', url: `${A}/eps/1/plans` }).request.body.regimeId).toBe(2);
+  });
+
   it('planes: vacío y 404', async () => {
     await create();
     buttonByText('Planes').click();

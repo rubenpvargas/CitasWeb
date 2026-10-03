@@ -1,7 +1,23 @@
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
-import { PortalService, HIC_LOGO_IMG } from '../../services/portal.service';
-import { Cita } from '../../models/portal.types';
+import { HIC_LOGO_IMG } from '../../services/brand-assets';
+import { SessionStore } from '../../core/auth/session.store';
+import { AppointmentsApi } from '../../core/api/appointments.api';
+import { AppointmentDto } from '../../core/api/availability.api';
+import { appointmentStatusLabel } from '../../core/api/appointment-status';
+import { errorMessage } from '../../core/api/api-errors';
+import { dateOf, formatLongDate, formatShortDate, nowInBogota, timeOf } from '../../core/time/bogota-time';
+import { STATUS_BADGE } from '../appointments/appointments';
+
+/** Recomendaciones generales (contenido estático, no datos del paciente). */
+export const GENERAL_PREPARATION = [
+  'Presentar documento de identidad original.',
+  'Llevar la orden médica o autorización vigente de tu EPS.',
+  'Llegar 20 minutos antes de la hora programada.',
+  'Llevar la lista de medicamentos que tomas habitualmente.',
+];
+
+const UPCOMING = ['APPROVED', 'REQUESTED'];
 
 @Component({
   selector: 'app-dashboard',
@@ -27,14 +43,12 @@ import { Cita } from '../../models/portal.types';
             type="button"
             (click)="goToProfile()"
             title="Ver perfil de paciente"
+            aria-label="Ver perfil de paciente"
             class="flex items-center justify-center p-0.5 rounded-full hover:ring-2 hover:ring-secondary/40 transition-all cursor-pointer border-0 bg-transparent"
           >
-            <img
-              [src]="patient().avatarUrl"
-              alt="Foto de perfil"
-              class="w-8 h-8 rounded-full object-cover border border-outline-variant/60"
-              referrerpolicy="no-referrer"
-            />
+            <span class="w-8 h-8 rounded-full bg-surface-container-high text-primary flex items-center justify-center border border-outline-variant/60" aria-hidden="true">
+              <span class="material-symbols-outlined text-[20px]">person</span>
+            </span>
           </button>
         </div>
       </div>
@@ -48,7 +62,7 @@ import { Cita } from '../../models/portal.types';
         <section class="flex flex-col gap-2 pt-1">
           <div class="flex items-center justify-between">
             <div class="flex flex-col">
-              <span class="text-2xl font-bold text-primary tracking-tight">Hola, {{ patient().firstName }}</span>
+              <span class="text-2xl font-bold text-primary tracking-tight">Hola, {{ firstName() }}</span>
               <span class="text-[13px] text-on-surface-variant font-medium">Bienvenida a tu portal de salud HIC | FCV</span>
             </div>
             <div class="flex items-center justify-center w-10 h-10 rounded-full bg-surface-container-high text-primary shadow-xs">
@@ -59,8 +73,10 @@ import { Cita } from '../../models/portal.types';
           <div class="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-surface-container-low shadow-xs border border-outline-variant/30">
             <span class="w-2 h-2 rounded-full bg-secondary shrink-0 animate-pulse"></span>
             <p class="text-[13px] text-on-surface">
-              @if (!portalService.emptyStateSimulated() && upcomingCount() > 0) {
-                Tienes <span class="font-semibold text-primary">{{ upcomingCount() }} cita médica</span> programada próximamente.
+              @if (loading()) {
+                Consultando tus citas...
+              } @else if (upcoming().length > 0) {
+                Tienes <span class="font-semibold text-primary">{{ upcoming().length }} {{ upcoming().length === 1 ? 'cita médica' : 'citas médicas' }}</span> próximamente.
               } @else {
                 No tienes citas pendientes para los próximos días.
               }
@@ -79,7 +95,7 @@ import { Cita } from '../../models/portal.types';
               <span class="text-base font-semibold tracking-tight text-white">Solicitar nueva cita</span>
             </div>
             <p class="text-[13px] text-[#dae2fd] leading-relaxed">
-              Agenda tu consulta médica presencial o virtual con especialistas de alta complejidad en minutos.
+              Agenda tu consulta médica presencial con especialistas de alta complejidad en minutos.
             </p>
             <div class="pt-1 flex items-center gap-2.5">
               <button
@@ -95,6 +111,7 @@ import { Cita } from '../../models/portal.types';
                 (click)="toggleFaqModal()"
                 class="flex items-center justify-center p-2.5 rounded-lg bg-white/10 text-white hover:bg-white/20 transition-colors cursor-pointer border-0"
                 title="Información y preguntas frecuentes"
+                aria-label="Información y preguntas frecuentes"
               >
                 <span class="material-symbols-outlined text-[18px]">help_outline</span>
               </button>
@@ -103,19 +120,23 @@ import { Cita } from '../../models/portal.types';
         </section>
 
         <!-- Métricas Rápidas en Cuadrícula de 3 Columnas -->
-        <div class="grid grid-cols-3 gap-2.5">
+        <div class="grid grid-cols-3 gap-2.5" data-testid="dashboard-metrics">
           <div class="flex flex-col items-center justify-center p-3 rounded-xl bg-surface-container-lowest shadow-xs text-center border border-outline-variant/30">
-            <span class="text-xl font-bold text-secondary">{{ portalService.emptyStateSimulated() ? 0 : upcomingCount() }}</span>
-            <span class="text-[11px] font-medium text-on-surface-variant mt-0.5">Próxima</span>
+            <span class="text-xl font-bold text-secondary" data-testid="metric-upcoming">{{ upcoming().length }}</span>
+            <span class="text-[11px] font-medium text-on-surface-variant mt-0.5">Próximas</span>
           </div>
           <div class="flex flex-col items-center justify-center p-3 rounded-xl bg-surface-container-lowest shadow-xs text-center border border-outline-variant/30">
-            <span class="text-xl font-bold text-primary">{{ pastCount() }}</span>
-            <span class="text-[11px] font-medium text-on-surface-variant mt-0.5">Completadas</span>
+            <span class="text-xl font-bold text-primary" data-testid="metric-completed">{{ completedCount() }}</span>
+            <span class="text-[11px] font-medium text-on-surface-variant mt-0.5">Atendidas</span>
           </div>
           <div class="flex flex-col items-center justify-center p-3 rounded-xl bg-surface-container-lowest shadow-xs text-center border border-outline-variant/30">
-            <span class="text-xl font-bold text-outline">0</span>
+            <span class="text-xl font-bold text-outline" data-testid="metric-pending">{{ pendingCount() }}</span>
             <span class="text-[11px] font-medium text-on-surface-variant mt-0.5">Pendientes</span>
           </div>
+        </div>
+
+        <div role="alert" aria-live="assertive">
+          @if (error()) { <p class="ui-alert-error" data-testid="dashboard-error">{{ error() }}</p> }
         </div>
 
         <!-- Sección: Próxima Cita Agendada -->
@@ -123,36 +144,29 @@ import { Cita } from '../../models/portal.types';
           <div class="flex items-center justify-between px-1">
             <div class="flex items-center gap-1.5">
               <span class="material-symbols-outlined text-primary text-[20px]">event_upcoming</span>
-              <h2 class="text-[15px] font-semibold text-primary">Próxima cita agendada</h2>
+              <h2 class="text-[15px] font-semibold text-primary">Próxima cita</h2>
             </div>
-            <button
-              type="button"
-              (click)="toggleEmptyState()"
-              class="text-[12px] font-medium text-secondary hover:underline cursor-pointer bg-transparent border-0 p-0"
-            >
-              {{ portalService.emptyStateSimulated() ? 'Ver cita activa' : 'Simular estado vacío' }}
-            </button>
           </div>
 
           <!-- Tarjeta con Cita Confirmada -->
-          @if (!portalService.emptyStateSimulated() && nextCita(); as cita) {
-            <div class="relative overflow-hidden rounded-2xl bg-surface-container-lowest shadow-xs p-5 flex flex-col gap-4 border border-outline-variant/40">
+          @if (loading()) {
+            <p class="ui-empty" role="status" data-testid="dashboard-loading">Cargando tu próxima cita...</p>
+          } @else if (nextCita(); as cita) {
+            <div data-testid="next-appointment" class="relative overflow-hidden rounded-2xl bg-surface-container-lowest shadow-xs p-5 flex flex-col gap-4 border border-outline-variant/40">
               <div class="absolute left-0 top-0 bottom-0 w-1.5 bg-primary-container"></div>
               
               <div class="flex items-start justify-between gap-3">
                 <div class="flex flex-col min-w-0">
                   <div class="flex items-center gap-1.5 mb-1.5">
-                    <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 text-[11px] font-semibold border border-emerald-200">
-                      <span class="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
-                      Confirmada
+                    <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border" [class]="badge(cita.status)" data-testid="next-status">
+                      {{ label(cita.status) }}
                     </span>
-                    <span class="text-[11px] text-on-surface-variant font-medium">· {{ cita.modality }}</span>
                   </div>
-                  <span class="text-lg font-semibold text-primary tracking-tight truncate">{{ cita.specialty }}</span>
-                  <span class="text-[14px] text-on-surface-variant font-medium mt-0.5">{{ cita.doctorName }}</span>
+                  <span class="text-lg font-semibold text-primary tracking-tight truncate">{{ cita.specialtyName }}</span>
+                  <span class="text-[14px] text-on-surface-variant font-medium mt-0.5">{{ cita.professionalName }}</span>
                 </div>
                 <div class="w-12 h-12 rounded-xl bg-surface-container-low shrink-0 flex items-center justify-center text-primary shadow-xs border border-outline-variant/30">
-                  <span class="material-symbols-outlined text-[24px]">{{ cita.icon || 'cardiology' }}</span>
+                  <span class="material-symbols-outlined text-[24px]" aria-hidden="true">event</span>
                 </div>
               </div>
 
@@ -161,15 +175,14 @@ import { Cita } from '../../models/portal.types';
                 <div class="flex items-center gap-2.5 text-on-surface">
                   <span class="material-symbols-outlined text-secondary text-[20px] shrink-0">calendar_clock</span>
                   <div class="flex flex-col">
-                    <span class="text-[14px] font-semibold text-on-surface">{{ cita.date }}</span>
-                    <span class="text-[12px] text-on-surface-variant">{{ cita.time }} ({{ cita.arrivalNotice }})</span>
+                    <span class="text-[14px] font-semibold text-on-surface capitalize">{{ longDate(cita.startAt) }}</span>
+                    <span class="text-[12px] text-on-surface-variant">{{ time(cita.startAt) }}–{{ time(cita.endAt) }} (llegar 20 min antes)</span>
                   </div>
                 </div>
                 <div class="flex items-start gap-2.5 text-on-surface pt-1 border-t border-outline-variant/20">
                   <span class="material-symbols-outlined text-outline text-[20px] shrink-0 mt-0.5">location_on</span>
                   <div class="flex flex-col">
-                    <span class="text-[13px] text-primary font-semibold">{{ cita.sede }}</span>
-                    <span class="text-[12px] text-on-surface-variant leading-snug">{{ cita.locationDetails }}</span>
+                    <span class="text-[13px] text-primary font-semibold">{{ cita.locationName || cita.locationCode }}</span>
                   </div>
                 </div>
               </div>
@@ -186,17 +199,17 @@ import { Cita } from '../../models/portal.types';
                 </button>
                 <button
                   type="button"
-                  (click)="addToCalendar(cita)"
+                  (click)="goToMyAppointments()"
                   class="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-lg bg-surface-container text-secondary text-[13px] font-semibold hover:bg-surface-container-high transition-colors cursor-pointer border-0"
                 >
-                  <span class="material-symbols-outlined text-[16px]">calendar_add_on</span>
-                  <span>Al calendario</span>
+                  <span class="material-symbols-outlined text-[16px]" aria-hidden="true">calendar_month</span>
+                  <span>Mis citas</span>
                 </button>
               </div>
             </div>
           } @else {
             <!-- Tarjeta de Estado Vacío -->
-            <div class="rounded-2xl bg-surface-container-lowest shadow-xs p-6 flex flex-col items-center text-center gap-3 border border-outline-variant/40 animate-fade-in">
+            <div data-testid="dashboard-empty" class="rounded-2xl bg-surface-container-lowest shadow-xs p-6 flex flex-col items-center text-center gap-3 border border-outline-variant/40 animate-fade-in">
               <div class="w-12 h-12 rounded-full bg-surface-container flex items-center justify-center text-outline">
                 <span class="material-symbols-outlined text-[26px]">event_busy</span>
               </div>
@@ -236,21 +249,23 @@ import { Cita } from '../../models/portal.types';
           </div>
 
           <div class="flex flex-col gap-2.5">
-            @for (cita of recentPastCitas(); track cita.id) {
-              <div class="flex items-center justify-between p-3.5 rounded-xl bg-surface-container-lowest shadow-xs hover:bg-surface-container-low transition-colors border border-outline-variant/30">
+            @for (cita of recent(); track cita.id) {
+              <div [attr.data-testid]="'recent-' + cita.id" class="flex items-center justify-between p-3.5 rounded-xl bg-surface-container-lowest shadow-xs hover:bg-surface-container-low transition-colors border border-outline-variant/30">
                 <div class="flex items-center gap-3 min-w-0">
                   <div class="w-9 h-9 rounded-lg bg-surface-container flex items-center justify-center text-primary shrink-0">
-                    <span class="material-symbols-outlined text-[20px]">{{ cita.icon }}</span>
+                    <span class="material-symbols-outlined text-[20px]" aria-hidden="true">event</span>
                   </div>
                   <div class="flex flex-col min-w-0">
-                    <span class="text-[14px] font-semibold text-on-surface truncate">{{ cita.specialty }}</span>
-                    <span class="text-[12px] text-on-surface-variant truncate">{{ cita.doctorName }} · {{ cita.date }}</span>
+                    <span class="text-[14px] font-semibold text-on-surface truncate">{{ cita.specialtyName }}</span>
+                    <span class="text-[12px] text-on-surface-variant truncate">{{ cita.professionalName }} · {{ shortDate(cita.startAt) }}</span>
                   </div>
                 </div>
-                <span class="shrink-0 text-[11px] px-2.5 py-0.5 rounded-full bg-surface-container text-on-surface-variant font-medium">
-                  {{ cita.status }}
+                <span class="shrink-0 text-[11px] px-2.5 py-0.5 rounded-full font-medium border" [class]="badge(cita.status)">
+                  {{ label(cita.status) }}
                 </span>
               </div>
+            } @empty {
+              @if (!loading()) { <p class="ui-empty" data-testid="recent-empty">Aún no tienes citas anteriores.</p> }
             }
           </div>
 
@@ -299,7 +314,7 @@ import { Cita } from '../../models/portal.types';
               </div>
               <div class="flex flex-col">
                 <h3 class="text-[15px] font-semibold text-primary">Instrucciones de Preparación</h3>
-                <span class="text-[11px] text-on-surface-variant">{{ cita.specialty }}</span>
+                <span class="text-[11px] text-on-surface-variant">{{ cita.specialtyName }}</span>
               </div>
             </div>
             <button
@@ -314,10 +329,10 @@ import { Cita } from '../../models/portal.types';
           <div class="bg-surface-container-low p-3.5 rounded-xl border border-outline-variant/30">
             <div class="flex items-center gap-2 text-primary text-[13px] font-semibold mb-1">
               <span class="material-symbols-outlined text-[16px]">schedule</span>
-              <span>{{ cita.date }} - {{ cita.time }}</span>
+              <span class="capitalize">{{ longDate(cita.startAt) }} - {{ time(cita.startAt) }}</span>
             </div>
             <p class="text-[12px] text-on-surface-variant">
-              {{ cita.doctorName }} · {{ cita.sede }}
+              {{ cita.professionalName }} · {{ cita.locationName || cita.locationCode }}
             </p>
           </div>
 
@@ -326,7 +341,7 @@ import { Cita } from '../../models/portal.types';
               Recomendaciones obligatorias previas:
             </span>
             <ul class="flex flex-col gap-2">
-              @for (item of cita.preparation; track item; let i = $index) {
+              @for (item of preparation; track item; let i = $index) {
                 <li class="flex items-start gap-2.5 text-[13px] text-on-surface leading-snug">
                   <span class="w-5 h-5 rounded-full bg-primary/10 text-primary font-bold text-[11px] flex items-center justify-center shrink-0 mt-0.5">
                     {{ i + 1 }}
@@ -338,14 +353,6 @@ import { Cita } from '../../models/portal.types';
           </div>
 
           <div class="mt-2 pt-3 border-t border-outline-variant/30 flex gap-2">
-            <button
-              type="button"
-              (click)="addToCalendar(cita)"
-              class="flex-1 h-10 rounded-lg bg-surface-container text-secondary text-[13px] font-semibold flex items-center justify-center gap-1.5 hover:bg-surface-container-high transition-colors cursor-pointer border-0"
-            >
-              <span class="material-symbols-outlined text-[16px]">calendar_month</span>
-              <span>Guardar recordatorio</span>
-            </button>
             <button
               type="button"
               (click)="closePreparation()"
@@ -403,36 +410,71 @@ import { Cita } from '../../models/portal.types';
       </div>
     }
 
-    <!-- Toast de Notificación de Calendario -->
-    @if (calendarToast()) {
-      <div class="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 bg-[#002042] text-white px-4 py-2.5 rounded-full shadow-lg text-[13px] flex items-center gap-2 border border-secondary/50 animate-bounce">
-        <span class="material-symbols-outlined text-secondary-container text-[18px]">check_circle</span>
-        <span>Cita sincronizada con tu calendario con éxito</span>
-      </div>
-    }
   `
 })
 export class DashboardComponent {
-  readonly portalService = inject(PortalService);
   private readonly router = inject(Router);
+  private readonly session = inject(SessionStore);
+  private readonly appointmentsApi = inject(AppointmentsApi);
   readonly logoImg = HIC_LOGO_IMG;
+  readonly preparation = GENERAL_PREPARATION;
 
-  readonly patient = this.portalService.activePatient;
-  readonly upcomingCount = () => this.portalService.upcomingCitas().length;
-  readonly pastCount = () => this.portalService.pastCitas().length;
-  readonly nextCita = this.portalService.nextUpcomingCita;
-  readonly recentPastCitas = () => this.portalService.pastCitas().slice(0, 2);
+  readonly firstName = computed(() => this.session.user()?.firstName ?? '');
+  readonly appointments = signal<AppointmentDto[]>([]);
+  readonly loading = signal(true);
+  readonly error = signal<string | null>(null);
+  private readonly now = nowInBogota();
 
-  readonly selectedCita = signal<Cita | null>(null);
+  /** Próximas: aprobadas o pendientes con inicio futuro (hora de Bogotá). */
+  readonly upcoming = computed(() =>
+    this.appointments()
+      .filter((a) => UPCOMING.includes(a.status) && a.startAt.slice(0, 16) >= this.now)
+      .sort((a, b) => a.startAt.localeCompare(b.startAt)),
+  );
+  readonly nextCita = computed(() => this.upcoming()[0] ?? null);
+  readonly completedCount = computed(() => this.appointments().filter((a) => a.status === 'COMPLETED').length);
+  readonly pendingCount = computed(() => this.appointments().filter((a) => a.status === 'REQUESTED').length);
+  readonly recent = computed(() =>
+    this.appointments()
+      .filter((a) => !this.upcoming().includes(a))
+      .sort((a, b) => b.startAt.localeCompare(a.startAt))
+      .slice(0, 2),
+  );
+
+  readonly selectedCita = signal<AppointmentDto | null>(null);
   readonly showFaqModal = signal<boolean>(false);
-  readonly calendarToast = signal<boolean>(false);
 
   constructor() {
-    this.portalService.loadAppointments();
+    this.appointmentsApi.list().subscribe({
+      next: (list) => {
+        this.appointments.set(list);
+        this.loading.set(false);
+      },
+      error: (e: unknown) => {
+        this.error.set(errorMessage(e, 'No fue posible cargar tus citas.'));
+        this.loading.set(false);
+      },
+    });
   }
 
-  toggleEmptyState() {
-    this.portalService.toggleEmptyState();
+  label(status: string): string {
+    return appointmentStatusLabel(status);
+  }
+
+  badge(status: string): string {
+    return STATUS_BADGE[status] ?? 'bg-surface-container text-on-surface-variant border-outline-variant/40';
+  }
+
+  longDate(value: string): string {
+    return formatLongDate(dateOf(value));
+  }
+
+  shortDate(value: string): string {
+    return formatShortDate(dateOf(value));
+  }
+
+  time(value: string): string {
+    return timeOf(value);
   }
 
   goToBooking() {
@@ -447,7 +489,7 @@ export class DashboardComponent {
     void this.router.navigate(['/perfil']);
   }
 
-  openPreparation(cita: Cita) {
+  openPreparation(cita: AppointmentDto) {
     this.selectedCita.set(cita);
   }
 
@@ -457,15 +499,5 @@ export class DashboardComponent {
 
   toggleFaqModal() {
     this.showFaqModal.update((v) => !v);
-  }
-
-  addToCalendar(cita?: Cita) {
-    if (cita) {
-      void cita.id;
-    }
-    this.calendarToast.set(true);
-    setTimeout(() => {
-      this.calendarToast.set(false);
-    }, 3000);
   }
 }
