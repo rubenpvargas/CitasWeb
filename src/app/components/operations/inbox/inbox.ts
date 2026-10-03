@@ -1,7 +1,9 @@
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
-import { AdminApi, InboxItemDto } from '../../../core/api/admin.api';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { forkJoin } from 'rxjs';
+import { AdminApi, InboxFilters, InboxItemDto, ProfessionalDto, SpecialtyDto } from '../../../core/api/admin.api';
+import { CatalogApi, CatalogLocationDto } from '../../../core/api/catalog.api';
 import { errorCode, errorMessage } from '../../../core/api/api-errors';
-import { formatShortDate, timeOf, dateOf } from '../../../core/time/bogota-time';
+import { MAX_RANGE_DAYS, daysBetween, formatShortDate, timeOf, dateOf } from '../../../core/time/bogota-time';
 
 export const REASON_MAX = 500;
 
@@ -17,7 +19,8 @@ export interface DecisionRecord {
 
 /**
  * HU-018 / HU-022: bandeja ADMIN de citas especializadas y reprogramaciones
- * pendientes, con historial de decisiones de la sesión (aprobada/rechazada). Aprobar pide confirmación;
+ * pendientes, con historial de decisiones de la sesión (aprobada/rechazada).
+ * HU-025: filtros por sede, profesional, especialidad y rango de fechas. Aprobar pide confirmación;
  * rechazar exige un motivo escrito (validación de UX; el backend responde
  * 409 REJECTION_REASON_REQUIRED / INVALID_TRANSITION).
  */
@@ -30,6 +33,39 @@ export interface DecisionRecord {
         <h2 id="inbox-title" class="ui-section-title">Solicitudes pendientes</h2>
         <button type="button" class="ui-btn-ghost" (click)="load()" [disabled]="loading()">Actualizar</button>
       </div>
+      <form (submit)="$event.preventDefault(); applyFilters()" class="ui-card grid grid-cols-1 sm:grid-cols-3 gap-2 items-end" data-testid="inbox-filters" aria-label="Filtrar solicitudes">
+        <div class="flex flex-col gap-1">
+          <label for="in-location" class="ui-label">Sede</label>
+          <select id="in-location" class="ui-input" (change)="fLocation.set($any($event.target).value)">
+            <option value="">Todas</option>
+            @for (l of locations(); track l.code) { <option [value]="l.code">{{ l.name }}</option> }
+          </select>
+        </div>
+        <div class="flex flex-col gap-1">
+          <label for="in-specialty" class="ui-label">Especialidad</label>
+          <select id="in-specialty" class="ui-input" (change)="fSpecialty.set($any($event.target).value)">
+            <option value="">Todas</option>
+            @for (s of specialties(); track s.id) { <option [value]="s.id">{{ s.name }}</option> }
+          </select>
+        </div>
+        <div class="flex flex-col gap-1">
+          <label for="in-professional" class="ui-label">Profesional</label>
+          <select id="in-professional" class="ui-input" (change)="fProfessional.set($any($event.target).value)">
+            <option value="">Todos</option>
+            @for (p of professionals(); track p.id) { <option [value]="p.id">{{ p.firstName }} {{ p.lastName }}</option> }
+          </select>
+        </div>
+        <div class="flex flex-col gap-1">
+          <label for="in-from" class="ui-label">Desde</label>
+          <input id="in-from" type="date" class="ui-input" [value]="fFrom()" (change)="fFrom.set($any($event.target).value)" />
+        </div>
+        <div class="flex flex-col gap-1">
+          <label for="in-to" class="ui-label">Hasta</label>
+          <input id="in-to" type="date" class="ui-input" [value]="fTo()" (change)="fTo.set($any($event.target).value)" />
+        </div>
+        <button type="submit" class="ui-btn-secondary" data-testid="inbox-apply" [disabled]="loading()">Filtrar</button>
+      </form>
+
       <div role="status" aria-live="polite">
         @if (loading()) { <p class="ui-empty">Cargando bandeja...</p> }
         @if (message()) { <p class="ui-alert-success" data-testid="inbox-message">{{ message() }}</p> }
@@ -46,10 +82,22 @@ export interface DecisionRecord {
                   {{ item.itemType === 'RESCHEDULE' ? 'Reprogramación' : 'Cita especializada' }} #{{ item.id }}
                 </h3>
                 <p class="text-sm text-on-surface-variant">
-                  @if (item.itemType === 'RESCHEDULE') { Nueva franja solicitada: }
-                  {{ item.specialtyName }} · {{ when(item.startAt) }} · {{ item.locationCode }}
-                  @if (item.patientFirstName) { · {{ item.patientFirstName }} {{ item.patientLastName }} }
+                  {{ item.specialtyName }}
+                  @if (item.professionalName) { · {{ item.professionalName }} }
+                  @if (item.patientName) { · Paciente: {{ item.patientName }} }
                 </p>
+                @if (item.itemType === 'RESCHEDULE') {
+                  <p class="text-sm text-on-surface flex flex-wrap items-center gap-1" [attr.data-testid]="'slots-' + itemKey(item)">
+                    @if (item.currentStartAt) {
+                      <span>Horario actual: <strong>{{ when(item.currentStartAt) }}</strong></span>
+                      <span class="material-symbols-outlined text-[16px] text-secondary" aria-hidden="true">arrow_forward</span>
+                      <span class="sr-only">cambia a</span>
+                    }
+                    <span>Nueva franja solicitada: <strong>{{ when(item.startAt) }}</strong> · {{ item.locationName || item.locationCode }}</span>
+                  </p>
+                } @else {
+                  <p class="text-sm text-on-surface">{{ when(item.startAt) }} · {{ item.locationName || item.locationCode }}</p>
+                }
                 <span class="ui-badge bg-surface-container-high text-primary mt-1" [attr.data-testid]="'state-' + itemKey(item)">
                   {{ item.itemType === 'RESCHEDULE' ? 'Reprogramación pendiente' : 'Pendiente de aprobación' }}
                 </span>
@@ -133,7 +181,49 @@ export class InboxComponent {
   readonly deciding = signal(false);
   readonly decisions = signal<DecisionRecord[]>([]);
 
+  // HU-025 filtros
+  readonly locationCatalog = signal<CatalogLocationDto[]>([]);
+  readonly locations = computed(() => this.locationCatalog().filter((l) => l.active));
+  readonly specialties = signal<SpecialtyDto[]>([]);
+  readonly professionals = signal<ProfessionalDto[]>([]);
+  readonly fLocation = signal('');
+  readonly fSpecialty = signal('');
+  readonly fProfessional = signal('');
+  readonly fFrom = signal('');
+  readonly fTo = signal('');
+  private filters: InboxFilters = {};
+  private readonly catalogs = inject(CatalogApi);
+
   constructor() {
+    this.load();
+    this.catalogs.getCatalogs().subscribe({ next: (c) => this.locationCatalog.set(c.locations), error: () => undefined });
+    forkJoin({ specialties: this.api.listSpecialties(), professionals: this.api.listProfessionals() }).subscribe({
+      next: ({ specialties, professionals }) => {
+        this.specialties.set(specialties);
+        this.professionals.set(professionals);
+      },
+      error: () => undefined,
+    });
+  }
+
+  applyFilters() {
+    const from = this.fFrom();
+    const to = this.fTo();
+    if ((from && !to) || (!from && to)) {
+      this.error.set('Indica ambas fechas del rango o ninguna.');
+      return;
+    }
+    if (from && to && (daysBetween(from, to) < 0 || daysBetween(from, to) > MAX_RANGE_DAYS)) {
+      this.error.set(`Elige un rango válido de hasta ${MAX_RANGE_DAYS} días.`);
+      return;
+    }
+    this.filters = {
+      locationCode: this.fLocation() || null,
+      specialtyId: this.fSpecialty() ? Number(this.fSpecialty()) : null,
+      professionalId: this.fProfessional() ? Number(this.fProfessional()) : null,
+      from: from || null,
+      to: to || null,
+    };
     this.load();
   }
 
@@ -162,7 +252,7 @@ export class InboxComponent {
   load() {
     this.loading.set(true);
     this.error.set(null);
-    this.api.listInbox().subscribe({
+    this.api.listInbox(this.filters).subscribe({
       next: (items) => {
         this.items.set(items);
         this.loading.set(false);
@@ -221,7 +311,7 @@ export class InboxComponent {
           // La solicitud ya cambió en el servidor: se refresca la bandeja conservando el aviso.
           this.activeKey.set(null);
           this.error.set(this.decisionError());
-          this.api.listInbox().subscribe({ next: (items) => this.items.set(items), error: () => undefined });
+          this.api.listInbox(this.filters).subscribe({ next: (items) => this.items.set(items), error: () => undefined });
         }
       },
     });

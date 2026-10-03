@@ -1,6 +1,6 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { Observable } from 'rxjs';
+import { Observable, map } from 'rxjs';
 import { AppConfigService } from '../config/app-config.service';
 
 /** HU-008 EPS (`/api/v1/admin/eps`). */
@@ -124,16 +124,67 @@ export interface CapabilitiesRequest {
   active: boolean;
 }
 
-/** Elemento de `GET /api/v1/admin/inbox` (forma del controlador actual). */
+/**
+ * Elemento normalizado de la bandeja ADMIN. HU-025 devuelve
+ * `{appointments:[REQUESTED], reschedules:[PENDING]}`; los nombres de campo
+ * no fijados por el contrato siguen el controlador actual y la decisión
+ * backend (`currentStartAt/currentEndAt`, `requestedStartAt/requestedEndAt`).
+ */
 export interface InboxItemDto {
   itemType: 'APPOINTMENT' | 'RESCHEDULE';
   id: number;
   status: string;
+  /** Inicio de la cita o, en reprogramaciones, de la franja solicitada. */
   startAt: string;
+  endAt?: string;
   specialtyName: string;
   locationCode: string;
+  locationName?: string;
+  professionalName?: string;
+  patientName?: string;
   patientFirstName?: string;
   patientLastName?: string;
+  appointmentId?: number;
+  currentStartAt?: string;
+  currentEndAt?: string;
+  requestedStartAt?: string;
+  requestedEndAt?: string;
+}
+
+export interface InboxFilters {
+  locationCode?: string | null;
+  professionalId?: number | null;
+  specialtyId?: number | null;
+  from?: string | null;
+  to?: string | null;
+}
+
+type RawInboxItem = Partial<InboxItemDto> & Record<string, unknown>;
+
+/** Acepta la forma del contrato (objeto) o la lista plana anterior. */
+export function normalizeInbox(
+  body: RawInboxItem[] | { appointments?: RawInboxItem[]; reschedules?: RawInboxItem[] } | null,
+): InboxItemDto[] {
+  if (!body) return [];
+  if (Array.isArray(body)) return body.map((i) => toInboxItem(i, (i.itemType as InboxItemDto['itemType']) ?? 'APPOINTMENT'));
+  return [
+    ...(body.appointments ?? []).map((i) => toInboxItem(i, 'APPOINTMENT')),
+    ...(body.reschedules ?? []).map((i) => toInboxItem(i, 'RESCHEDULE')),
+  ];
+}
+
+function toInboxItem(raw: RawInboxItem, itemType: InboxItemDto['itemType']): InboxItemDto {
+  const startAt = (itemType === 'RESCHEDULE' ? raw.requestedStartAt ?? raw.startAt : raw.startAt) ?? '';
+  return {
+    ...raw,
+    itemType,
+    id: Number(raw.id),
+    status: raw.status ?? (itemType === 'RESCHEDULE' ? 'PENDING' : 'REQUESTED'),
+    startAt,
+    specialtyName: raw.specialtyName ?? '',
+    locationCode: raw.locationCode ?? '',
+    patientName: raw.patientName ?? (`${raw.patientFirstName ?? ''} ${raw.patientLastName ?? ''}`.trim() || undefined),
+  };
 }
 
 /** Convierte códigos de capacidades en arreglo, venga como arreglo o como cadena "A,B". */
@@ -196,8 +247,15 @@ export class AdminApi {
   }
 
   // Bandeja administrativa (Ola D/F endurecerá este flujo)
-  listInbox(): Observable<InboxItemDto[]> {
-    return this.http.get<InboxItemDto[]>(this.url('/inbox'));
+  /** HU-025 `GET /admin/inbox?locationCode&professionalId&specialtyId&from&to`. */
+  listInbox(filters: InboxFilters = {}): Observable<InboxItemDto[]> {
+    let params = new HttpParams();
+    for (const [key, value] of Object.entries(filters)) {
+      if (value !== null && value !== undefined && value !== '') params = params.set(key, String(value));
+    }
+    return this.http
+      .get<Parameters<typeof normalizeInbox>[0]>(this.url('/inbox'), { params })
+      .pipe(map((body) => normalizeInbox(body)));
   }
 
   /** HU-018 / HU-022: `{approve, reason}`; rechazar exige motivo (validado también por el backend). */

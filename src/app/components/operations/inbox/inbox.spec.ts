@@ -5,13 +5,19 @@ import { provideRouter } from '@angular/router';
 import { InboxComponent } from './inbox';
 import { AppConfigService } from '../../../core/config/app-config.service';
 import { InboxItemDto } from '../../../core/api/admin.api';
-import { TEST_API_URL } from '../../../testing/fixtures';
+import { TEST_API_URL, catalogsFixture } from '../../../testing/fixtures';
 
 const A = `${TEST_API_URL}/api/v1/admin`;
 const ITEM: InboxItemDto = {
   itemType: 'APPOINTMENT', id: 7, status: 'REQUESTED', startAt: '2099-01-20T10:00:00',
   specialtyName: 'Cardiología', locationCode: 'HIC', patientFirstName: 'Paciente', patientLastName: 'Sintético',
 };
+
+/** Catálogos de los filtros de HU-025 (no relevantes aquí). */
+function flushFilterCatalogs(http: HttpTestingController) {
+  http.match(`${TEST_API_URL}/api/v1/catalogs`).forEach((r) => r.flush(catalogsFixture()));
+  http.match((r) => r.url === `${A}/specialties` || r.url === `${A}/professionals`).forEach((r) => r.flush([]));
+}
 
 describe('InboxComponent — decisión ADMIN (HU-018)', () => {
   let fixture: ComponentFixture<InboxComponent>;
@@ -37,7 +43,10 @@ describe('InboxComponent — decisión ADMIN (HU-018)', () => {
     http = TestBed.inject(HttpTestingController);
   });
 
-  afterEach(() => http.verify());
+  afterEach(() => {
+    flushFilterCatalogs(http);
+    http.verify();
+  });
 
   const q = (s: string) => el.querySelector(s) as HTMLElement | null;
   const click = async (testId: string) => {
