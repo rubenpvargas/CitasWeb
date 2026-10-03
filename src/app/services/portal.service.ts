@@ -1,4 +1,4 @@
-import { Injectable, signal, computed, inject } from '@angular/core';
+import { Injectable, signal, computed, effect, inject, untracked } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Cita, Doctor, PatientUser } from '../models/portal.types';
 import { AppConfigService } from '../core/config/app-config.service';
@@ -42,6 +42,21 @@ export class PortalService {
 
   // Selected appointment for details/preparation modal
   readonly selectedCitaForPrep = signal<Cita | null>(null);
+
+  constructor() {
+    // Al cerrar o expirar la sesión no se conservan datos del usuario anterior (HU-003).
+    effect(() => {
+      if (this.session.isAuthenticated()) return;
+      untracked(() => this.resetUserState());
+    });
+  }
+
+  /** Descarta los datos cargados para el usuario de la sesión. */
+  resetUserState() {
+    this.citas.set(LEGACY_MOCK_CITAS);
+    this.selectedCitaForPrep.set(null);
+    this.emptyStateSimulated.set(false);
+  }
 
   // Computed views
   readonly upcomingCitas = computed(() => {

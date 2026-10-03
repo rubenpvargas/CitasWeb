@@ -22,7 +22,7 @@ import { AuthService } from '../../core/auth/auth.service';
           type="button"
           (click)="logout()"
           [disabled]="loggingOut()"
-          class="text-[12px] font-semibold text-error hover:bg-error-container/40 px-2.5 py-1 rounded-lg transition-colors cursor-pointer border-0 bg-transparent"
+          class="disabled:opacity-75 text-[12px] font-semibold text-error hover:bg-error-container/40 px-2.5 py-1 rounded-lg transition-colors cursor-pointer border-0 bg-transparent"
         >
           Cerrar sesión
         </button>
@@ -130,10 +130,11 @@ import { AuthService } from '../../core/auth/auth.service';
           type="button"
           (click)="logout()"
           [disabled]="loggingOut()"
-          class="w-full h-11 rounded-xl bg-surface-container-lowest border border-error/40 text-error text-[13px] font-semibold flex items-center justify-center gap-2 hover:bg-error-container/30 transition-colors cursor-pointer"
+          data-testid="logout-button"
+          class="w-full h-11 disabled:opacity-75 rounded-xl bg-surface-container-lowest border border-error/40 text-error text-[13px] font-semibold flex items-center justify-center gap-2 hover:bg-error-container/30 transition-colors cursor-pointer"
         >
-          <span class="material-symbols-outlined text-[18px]">logout</span>
-          <span>Cerrar sesión en este dispositivo</span>
+          <span class="material-symbols-outlined text-[18px]" [class.animate-spin]="loggingOut()" aria-hidden="true">{{ loggingOut() ? 'progress_activity' : 'logout' }}</span>
+          <span data-testid="logout-label">{{ loggingOut() ? 'Cerrando sesión...' : 'Cerrar sesión en este dispositivo' }}</span>
         </button>
 
       </div>
