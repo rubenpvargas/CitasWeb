@@ -1,7 +1,8 @@
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { A11yModule } from '@angular/cdk/a11y';
-import { AppointmentsApi } from '../../core/api/appointments.api';
+import { AppointmentsApi, RescheduleResponse } from '../../core/api/appointments.api';
+import { RescheduleDialogComponent } from './reschedule-dialog';
 import { AppointmentDto } from '../../core/api/availability.api';
 import { APPOINTMENT_STATUS_LABELS, appointmentStatusLabel } from '../../core/api/appointment-status';
 import { errorCode, errorMessage } from '../../core/api/api-errors';
@@ -25,7 +26,7 @@ export const STATUS_BADGE: Record<string, string> = {
 @Component({
   selector: 'app-appointments',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [A11yModule],
+  imports: [A11yModule, RescheduleDialogComponent],
   template: `
     <header class="sticky top-0 w-full z-40 bg-surface-container-lowest/95 backdrop-blur-md shadow-xs border-b border-outline-variant/30">
       <div class="h-16 px-4 flex items-center justify-between max-w-lg mx-auto w-full">
@@ -129,7 +130,13 @@ export const STATUS_BADGE: Record<string, string> = {
                 }
                 @if (cita.cancellable || cita.reschedulable) {
                   <div class="flex items-center gap-2 pt-1 border-t border-outline-variant/20">
-                    <!-- acciones -->
+                    @if (cita.reschedulable) {
+                      <button type="button" (click)="openReschedule(cita)" [attr.data-testid]="'reschedule-' + cita.id"
+                        [attr.aria-label]="'Reprogramar cita ' + cita.id + ' de ' + cita.specialtyName"
+                        class="flex-1 py-2 rounded-lg bg-surface-container text-primary text-[12px] font-semibold hover:bg-surface-container-high transition-colors cursor-pointer border-0">
+                        Reprogramar
+                      </button>
+                    }
                     @if (cita.cancellable) {
                       <button type="button" (click)="askCancel(cita)" [attr.data-testid]="'cancel-' + cita.id"
                         [attr.aria-label]="'Cancelar cita ' + cita.id + ' de ' + cita.specialtyName"
@@ -160,6 +167,10 @@ export const STATUS_BADGE: Record<string, string> = {
         }
       </div>
     </main>
+
+    @if (rescheduleTarget(); as target) {
+      <app-reschedule-dialog [appointment]="target" (requested)="onRescheduled($event)" (closed)="rescheduleTarget.set(null)" />
+    }
 
     <!-- Diálogo accesible de cancelación (HU-020) -->
     @if (cancelTarget(); as target) {
@@ -205,6 +216,22 @@ export class AppointmentsComponent {
   readonly cancelError = signal<string | null>(null);
 
   constructor() {
+    this.load();
+  }
+
+  // HU-021 reprogramación
+  readonly rescheduleTarget = signal<AppointmentDto | null>(null);
+
+  openReschedule(cita: AppointmentDto) {
+    this.message.set('');
+    this.rescheduleTarget.set(cita);
+  }
+
+  onRescheduled(response: RescheduleResponse) {
+    this.rescheduleTarget.set(null);
+    this.message.set(
+      `Solicitud de reprogramación enviada para el ${this.longDate(response.requestedStartAt)} a las ${this.time(response.requestedStartAt)}. Tu cita actual se mantiene hasta la decisión.`,
+    );
     this.load();
   }
 
