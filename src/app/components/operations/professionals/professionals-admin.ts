@@ -1,7 +1,9 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
-import { AdminApi, ProfessionalCreateRequest, ProfessionalDto, codeList } from '../../../core/api/admin.api';
+import { forkJoin } from 'rxjs';
+import { AdminApi, LocationDto, ProfessionalCreateRequest, ProfessionalDto, SpecialtyDto, codeList } from '../../../core/api/admin.api';
+import { CapabilitiesEditorComponent } from './capabilities-editor';
 import { errorCode, errorMessage, fieldErrors } from '../../../core/api/api-errors';
 
 type Field = keyof ProfessionalCreateRequest;
@@ -36,7 +38,7 @@ function strongPassword(control: { value: string }) {
 @Component({
   selector: 'app-professionals-admin',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, CapabilitiesEditorComponent],
   template: `
     <div class="grid md:grid-cols-[1fr_1.2fr] gap-5">
       <section class="ui-card flex flex-col gap-4" aria-labelledby="pro-form-title">
@@ -125,6 +127,7 @@ function strongPassword(control: { value: string }) {
         </div>
         <div role="status" aria-live="polite">
           @if (loading()) { <p class="ui-empty">Cargando profesionales...</p> }
+          @if (capMessage()) { <p class="ui-alert-success" data-testid="cap-success">{{ capMessage() }}</p> }
         </div>
         <div role="alert" aria-live="assertive">
           @if (listError()) { <p class="ui-alert-error" data-testid="pro-list-error">{{ listError() }}</p> }
@@ -140,7 +143,18 @@ function strongPassword(control: { value: string }) {
                     <p class="text-[11px] text-on-surface-variant">Especialidades: {{ codes(p.specialtyCodes) || 'sin asignar' }} · Sedes: {{ codes(p.locationCodes) || 'sin asignar' }}</p>
                   </div>
                   <span class="ui-badge" [class]="p.active ? 'bg-secondary-container/30 text-primary' : 'bg-surface-container-high text-on-surface-variant'">{{ p.active ? 'Activo' : 'Inactivo' }}</span>
+                  <button type="button" class="ui-btn-ghost" [attr.data-testid]="'cap-open-' + p.id" [attr.aria-expanded]="editingId() === p.id" (click)="openCapabilities(p)">Capacidades</button>
                 </div>
+                @if (editingId() === p.id) {
+                  @if (catalogLoading()) {
+                    <p class="ui-empty" role="status">Cargando especialidades y sedes...</p>
+                  } @else if (catalogError()) {
+                    <p class="ui-alert-error" role="alert">{{ catalogError() }}</p>
+                  } @else {
+                    <app-capabilities-editor [professional]="p" [specialties]="specialtyCatalog()" [locations]="locationCatalog()"
+                      (saved)="onCapabilitiesSaved(p)" (cancelled)="editingId.set(null)" />
+                  }
+                }
               </li>
             } @empty {
               @if (!listError()) { <li class="ui-empty" data-testid="pro-empty">No hay profesionales registrados.</li> }
@@ -162,6 +176,15 @@ export class ProfessionalsAdminComponent {
   readonly formError = signal<string | null>(null);
   readonly created = signal<string | null>(null);
   readonly serverErrors = signal<Partial<Record<Field, string>>>({});
+
+  // HU-011 capacidades
+  readonly editingId = signal<number | null>(null);
+  readonly specialtyCatalog = signal<SpecialtyDto[]>([]);
+  readonly locationCatalog = signal<LocationDto[]>([]);
+  readonly catalogLoading = signal(false);
+  readonly catalogError = signal<string | null>(null);
+  readonly capMessage = signal('');
+  private catalogLoaded = false;
 
   readonly form = this.fb.nonNullable.group({
     firstName: ['', [Validators.required, Validators.maxLength(100)]],
@@ -187,6 +210,32 @@ export class ProfessionalsAdminComponent {
     this.form.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => {
       if (Object.keys(this.serverErrors()).length) this.serverErrors.set({});
     });
+  }
+
+  openCapabilities(p: ProfessionalDto) {
+    this.capMessage.set('');
+    this.editingId.set(this.editingId() === p.id ? null : p.id);
+    if (this.catalogLoaded || this.catalogLoading()) return;
+    this.catalogLoading.set(true);
+    this.catalogError.set(null);
+    forkJoin({ specialties: this.api.listSpecialties(), locations: this.api.listLocations() }).subscribe({
+      next: ({ specialties, locations }) => {
+        this.specialtyCatalog.set(specialties);
+        this.locationCatalog.set(locations);
+        this.catalogLoaded = true;
+        this.catalogLoading.set(false);
+      },
+      error: (e: unknown) => {
+        this.catalogError.set(errorMessage(e, 'No fue posible cargar especialidades y sedes.'));
+        this.catalogLoading.set(false);
+      },
+    });
+  }
+
+  onCapabilitiesSaved(p: ProfessionalDto) {
+    this.editingId.set(null);
+    this.capMessage.set(`Capacidades de ${p.firstName} ${p.lastName} actualizadas.`);
+    this.load();
   }
 
   codes(value: ProfessionalDto['specialtyCodes']): string {
