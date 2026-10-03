@@ -1,35 +1,53 @@
 import { ChangeDetectionStrategy, Component, inject, signal, computed } from '@angular/core';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
+import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
-import { Router } from '@angular/router';
+import { errorCode, errorMessage, fieldErrors } from '../../core/api/api-errors';
+import { RegisterRequest } from '../../core/api/api.types';
+import { LOGIN_NOTICE_PARAM, LoginNotice } from '../../core/auth/login-notice';
+
+type FieldName = 'firstName' | 'lastName' | 'docType' | 'docNumber' | 'email' | 'phone' | 'password' | 'confirmPassword' | 'terms';
+
+/** Campo del DTO RegisterRequest -> control del formulario. */
+const DTO_TO_CONTROL: Record<string, FieldName> = {
+  firstName: 'firstName',
+  lastName: 'lastName',
+  documentType: 'docType',
+  documentNumber: 'docNumber',
+  email: 'email',
+  phone: 'phone',
+  password: 'password',
+};
+
+const CLIENT_MESSAGES: Record<FieldName, string> = {
+  firstName: 'Ingresa tus nombres.',
+  lastName: 'Ingresa tus apellidos.',
+  docType: 'Selecciona el tipo de documento.',
+  docNumber: 'Ingresa el número de documento.',
+  email: 'Ingresa un correo electrónico válido.',
+  phone: 'Ingresa un teléfono de contacto.',
+  password: 'La contraseña debe tener entre 8 y 72 caracteres.',
+  confirmPassword: 'Las contraseñas no coinciden.',
+  terms: 'Debes aceptar los términos para continuar.',
+};
 
 @Component({
   selector: 'app-register',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, RouterLink],
   template: `
     <main class="flex-1 flex flex-col relative w-full max-w-lg mx-auto px-4 pt-4 pb-12 bg-surface justify-center">
       <div class="flex flex-col w-full py-2 pb-10">
 
-        <!-- Banner de Éxito -->
-        @if (showSuccessBanner()) {
-          <div class="mb-5 p-4 rounded-xl bg-primary text-white shadow-sm flex items-center gap-3 border border-secondary/40 animate-fade-in">
-            <div class="w-8 h-8 rounded-full bg-secondary-container text-primary flex items-center justify-center shrink-0">
-              <span class="material-symbols-outlined text-lg font-bold">check_circle</span>
-            </div>
-            <div class="flex flex-col min-w-0 flex-1">
-              <p class="text-[14px] text-white font-semibold">¡Cuenta creada exitosamente!</p>
-              <p class="text-[12px] text-surface-variant">Redirigiendo a tu nuevo portal de citas médicas...</p>
-            </div>
-          </div>
-        }
-
+        <div role="alert" aria-live="assertive" aria-atomic="true">
         @if (registrationError()) {
-          <div class="mb-5 p-4 rounded-xl bg-error-container text-on-error-container flex items-start gap-3 border border-[#fecdd3]" role="alert">
-            <span class="material-symbols-outlined text-error text-lg">error</span>
+          <div data-testid="register-error" class="mb-5 p-4 rounded-xl bg-error-container text-on-error-container flex items-start gap-3 border border-[#fecdd3]">
+            <span class="material-symbols-outlined text-error text-lg" aria-hidden="true">error</span>
             <p class="text-[13px] leading-snug">{{ registrationError() }}</p>
           </div>
         }
+        </div>
 
         <!-- Encabezado Clínico Institucional -->
         <div class="flex flex-col mb-6">
@@ -54,7 +72,7 @@ import { Router } from '@angular/router';
         </div>
 
         <!-- Formulario de Registro -->
-        <form [formGroup]="registerForm" (ngSubmit)="onSubmit()" class="flex flex-col gap-4">
+        <form [formGroup]="registerForm" (ngSubmit)="onSubmit()" [attr.aria-busy]="loading()" novalidate class="flex flex-col gap-4">
           
           <!-- Nombres & Apellidos Grid -->
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -65,12 +83,14 @@ import { Router } from '@angular/router';
                   id="first-name"
                   type="text"
                   formControlName="firstName"
+                  [attr.aria-invalid]="!!fieldError('firstName')"
+                  [attr.aria-describedby]="fieldError('firstName') ? 'firstName-error' : null"
                   placeholder="Ej. Carlos Eduardo"
                   class="w-full h-11 px-3.5 bg-transparent text-[14px] text-on-surface placeholder:text-outline/60 focus:outline-none rounded-lg"
                 />
               </div>
-              @if (registerForm.get('firstName')?.invalid && registerForm.get('firstName')?.touched) {
-                <span class="text-[11px] text-error">Ingresa tus nombres.</span>
+              @if (fieldError('firstName'); as msg) {
+                <span id="firstName-error" class="text-[11px] text-error">{{ msg }}</span>
               }
             </div>
 
@@ -81,12 +101,14 @@ import { Router } from '@angular/router';
                   id="last-name"
                   type="text"
                   formControlName="lastName"
+                  [attr.aria-invalid]="!!fieldError('lastName')"
+                  [attr.aria-describedby]="fieldError('lastName') ? 'lastName-error' : null"
                   placeholder="Ej. Gómez Silva"
                   class="w-full h-11 px-3.5 bg-transparent text-[14px] text-on-surface placeholder:text-outline/60 focus:outline-none rounded-lg"
                 />
               </div>
-              @if (registerForm.get('lastName')?.invalid && registerForm.get('lastName')?.touched) {
-                <span class="text-[11px] text-error">Ingresa tus apellidos.</span>
+              @if (fieldError('lastName'); as msg) {
+                <span id="lastName-error" class="text-[11px] text-error">{{ msg }}</span>
               }
             </div>
           </div>
@@ -99,6 +121,8 @@ import { Router } from '@angular/router';
                 <select
                   id="doc-type"
                   formControlName="docType"
+                  [attr.aria-invalid]="!!fieldError('docType')"
+                  [attr.aria-describedby]="fieldError('docType') ? 'docType-error' : null"
                   class="w-full h-11 px-3.5 pr-8 bg-transparent text-[14px] text-on-surface appearance-none focus:outline-none rounded-lg cursor-pointer"
                 >
                   <option value="CC">Cédula de Ciudadanía (CC)</option>
@@ -120,12 +144,14 @@ import { Router } from '@angular/router';
                   type="tel"
                   inputmode="numeric"
                   formControlName="docNumber"
+                  [attr.aria-invalid]="!!fieldError('docNumber')"
+                  [attr.aria-describedby]="fieldError('docNumber') ? 'docNumber-error' : null"
                   placeholder="1098765432"
                   class="w-full h-11 px-3.5 bg-transparent text-[14px] text-on-surface placeholder:text-outline/60 focus:outline-none rounded-lg"
                 />
               </div>
-              @if (registerForm.get('docNumber')?.invalid && registerForm.get('docNumber')?.touched) {
-                <span class="text-[11px] text-error">Ingresa el número de documento.</span>
+              @if (fieldError('docNumber'); as msg) {
+                <span id="docNumber-error" class="text-[11px] text-error">{{ msg }}</span>
               }
             </div>
           </div>
@@ -138,10 +164,16 @@ import { Router } from '@angular/router';
                 id="email"
                 type="email"
                 formControlName="email"
+                  [attr.aria-invalid]="!!fieldError('email')"
+                  [attr.aria-describedby]="fieldError('email') ? 'email-error' : null"
                 placeholder="paciente@ejemplo.com"
+                autocomplete="email"
                 class="w-full h-11 px-3.5 bg-transparent text-[14px] text-on-surface placeholder:text-outline/60 focus:outline-none rounded-lg"
               />
             </div>
+            @if (fieldError('email'); as msg) {
+              <span id="email-error" class="text-[11px] text-error">{{ msg }}</span>
+            }
           </div>
 
           <!-- Teléfono con prefijo Colombia -->
@@ -161,10 +193,16 @@ import { Router } from '@angular/router';
                 type="tel"
                 inputmode="tel"
                 formControlName="phone"
+                  [attr.aria-invalid]="!!fieldError('phone')"
+                  [attr.aria-describedby]="fieldError('phone') ? 'phone-error' : null"
                 placeholder="300 123 4567"
+                autocomplete="tel"
                 class="flex-1 h-11 px-3.5 bg-transparent text-[14px] text-on-surface placeholder:text-outline/60 focus:outline-none"
               />
             </div>
+            @if (fieldError('phone'); as msg) {
+              <span id="phone-error" class="text-[11px] text-error">{{ msg }}</span>
+            }
           </div>
 
           <!-- Contraseña & Confirmar Grid -->
@@ -176,7 +214,10 @@ import { Router } from '@angular/router';
                   id="password"
                   [type]="showPassword() ? 'text' : 'password'"
                   formControlName="password"
+                  [attr.aria-invalid]="!!fieldError('password')"
+                  [attr.aria-describedby]="fieldError('password') ? 'password-error' : null"
                   placeholder="••••••••"
+                  autocomplete="new-password"
                   class="w-full h-11 px-3.5 pr-10 bg-transparent text-[14px] text-on-surface placeholder:text-outline/60 focus:outline-none rounded-lg"
                 />
                 <button
@@ -190,6 +231,9 @@ import { Router } from '@angular/router';
                   </span>
                 </button>
               </div>
+              @if (fieldError('password'); as msg) {
+                <span id="password-error" class="text-[11px] text-error">{{ msg }}</span>
+              }
             </div>
 
             <div class="flex flex-col gap-1.5">
@@ -199,7 +243,10 @@ import { Router } from '@angular/router';
                   id="confirm-password"
                   [type]="showConfirmPassword() ? 'text' : 'password'"
                   formControlName="confirmPassword"
+                  [attr.aria-invalid]="!!fieldError('confirmPassword')"
+                  [attr.aria-describedby]="fieldError('confirmPassword') ? 'confirmPassword-error' : null"
                   placeholder="••••••••"
+                  autocomplete="new-password"
                   class="w-full h-11 px-3.5 pr-10 bg-transparent text-[14px] text-on-surface placeholder:text-outline/60 focus:outline-none rounded-lg"
                 />
                 <button
@@ -213,6 +260,9 @@ import { Router } from '@angular/router';
                   </span>
                 </button>
               </div>
+              @if (fieldError('confirmPassword'); as msg) {
+                <span id="confirmPassword-error" class="text-[11px] text-error">{{ msg }}</span>
+              }
             </div>
           </div>
 
@@ -242,6 +292,8 @@ import { Router } from '@angular/router';
                 id="terms"
                 type="checkbox"
                 formControlName="terms"
+                  [attr.aria-invalid]="!!fieldError('terms')"
+                  [attr.aria-describedby]="fieldError('terms') ? 'terms-error' : null"
                 class="w-5 h-5 rounded cursor-pointer accent-[#002042]"
               />
             </div>
@@ -249,14 +301,15 @@ import { Router } from '@angular/router';
               Acepto los <span class="text-secondary font-semibold hover:underline">términos y condiciones</span> y autorizo el tratamiento de mis datos personales en salud según la política institucional de la Fundación Cardiovascular de Colombia (FCV) y el Hospital Internacional de Colombia (HIC).
             </label>
           </div>
-          @if (registerForm.get('terms')?.invalid && registerForm.get('terms')?.touched) {
-            <span class="text-[11px] text-error">Debes aceptar los términos para continuar.</span>
+          @if (fieldError('terms'); as msg) {
+            <span id="terms-error" class="text-[11px] text-error">{{ msg }}</span>
           }
 
           <!-- Submit Action Button -->
           <div class="mt-4 flex flex-col gap-3">
             <button
               id="submit-btn"
+              data-testid="register-submit"
               type="submit"
               [disabled]="loading()"
               class="w-full h-12 bg-primary-container text-white hover:bg-primary active:scale-[0.99] text-[15px] font-semibold rounded-lg shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-75"
@@ -273,13 +326,12 @@ import { Router } from '@angular/router';
             <!-- Secondary Login Link -->
             <div class="flex items-center justify-center gap-1 text-center py-2">
               <span class="text-[14px] text-on-surface-variant">¿Ya tienes una cuenta?</span>
-              <button
-                type="button"
-                (click)="goToLogin()"
+              <a
+                routerLink="/login"
                 class="text-[15px] text-secondary hover:text-primary font-semibold transition-colors bg-transparent border-0 cursor-pointer p-0"
               >
                 Iniciar sesión
-              </button>
+              </a>
             </div>
           </div>
 
@@ -296,32 +348,50 @@ export class RegisterComponent {
   readonly showPassword = signal<boolean>(false);
   readonly showConfirmPassword = signal<boolean>(false);
   readonly loading = signal<boolean>(false);
-  readonly showSuccessBanner = signal<boolean>(false);
   readonly registrationError = signal<string | null>(null);
+  /** Errores por campo devueltos por la API (400 VALIDATION_ERROR o 409 de unicidad). */
+  readonly serverErrors = signal<Partial<Record<FieldName, string>>>({});
 
-  readonly registerForm = this.fb.group({
-    firstName: ['Carlos Eduardo', [Validators.required]],
-    lastName: ['Gómez Silva', [Validators.required]],
-    docType: ['CC', [Validators.required]],
-    docNumber: ['1098765432', [Validators.required]],
-    email: ['paciente@ejemplo.com', [Validators.required, Validators.email]],
-    phone: ['300 123 4567', [Validators.required]],
-    password: ['SeguraHIC2025', [Validators.required]],
-    confirmPassword: ['SeguraHIC2025', [Validators.required]],
-    terms: [true, [Validators.requiredTrue]],
+  readonly registerForm = this.fb.nonNullable.group({
+    firstName: ['', [Validators.required, Validators.maxLength(100)]],
+    lastName: ['', [Validators.required, Validators.maxLength(100)]],
+    docType: ['CC', [Validators.required, Validators.maxLength(32)]],
+    docNumber: ['', [Validators.required, Validators.maxLength(64)]],
+    email: ['', [Validators.required, Validators.email, Validators.maxLength(254)]],
+    phone: ['', [Validators.required, Validators.maxLength(32)]],
+    password: ['', [Validators.required, Validators.minLength(8), Validators.maxLength(72)]],
+    confirmPassword: ['', [Validators.required]],
+    terms: [false, [Validators.requiredTrue]],
   });
 
-  readonly currentPassword = signal<string>('SeguraHIC2025');
+  /** Re-evalúa los mensajes de campo cuando cambia el estado del formulario. */
+  private readonly formStatus = toSignal(this.registerForm.events, { initialValue: null });
+  readonly currentPassword = toSignal(this.registerForm.controls.password.valueChanges, { initialValue: '' });
 
   constructor() {
-    this.registerForm.get('password')?.valueChanges.subscribe((v) => {
-      this.currentPassword.set(v || '');
+    // Un error del servidor deja de aplicar cuando el usuario corrige los datos.
+    this.registerForm.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => {
+      if (Object.keys(this.serverErrors()).length > 0) this.serverErrors.set({});
     });
   }
 
   readonly hasMinLength = computed(() => this.currentPassword().length >= 8);
   readonly hasUpper = computed(() => /[A-Z]/.test(this.currentPassword()));
   readonly hasNumber = computed(() => /[0-9]/.test(this.currentPassword()));
+
+  fieldError(name: FieldName): string | null {
+    this.formStatus();
+    const server = this.serverErrors()[name];
+    if (server) return server;
+    const control = this.registerForm.controls[name];
+    if (!control.touched) return null;
+    if (name === 'confirmPassword') {
+      return control.value && control.value === this.registerForm.controls.password.value
+        ? null
+        : CLIENT_MESSAGES.confirmPassword;
+    }
+    return control.invalid ? CLIENT_MESSAGES[name] : null;
+  }
 
   toggleShowPassword() {
     this.showPassword.update((v) => !v);
@@ -332,49 +402,56 @@ export class RegisterComponent {
   }
 
   onSubmit() {
-    if (this.registerForm.invalid) {
-      this.registerForm.markAllAsTouched();
-      return;
-    }
-
-    if (this.registerForm.value.password !== this.registerForm.value.confirmPassword) {
-      this.registrationError.set('Las contraseñas no coinciden. Verifícalas e inténtalo nuevamente.');
+    if (this.loading()) return;
+    this.serverErrors.set({});
+    this.registerForm.markAllAsTouched();
+    const form = this.registerForm.getRawValue();
+    if (this.registerForm.invalid || form.password !== form.confirmPassword) {
+      this.registrationError.set('Revisa los campos marcados e inténtalo nuevamente.');
       return;
     }
 
     this.loading.set(true);
     this.registrationError.set(null);
-    this.showSuccessBanner.set(false);
 
-    const form = this.registerForm.getRawValue();
-    this.authService.register({
-      firstName: form.firstName ?? '',
-      lastName: form.lastName ?? '',
-      documentType: form.docType ?? '',
-      documentNumber: form.docNumber ?? '',
-      email: form.email ?? '',
-      phone: form.phone ?? '',
-      password: form.password ?? '',
-    }).subscribe({
-      next: (user) => {
+    const request: RegisterRequest = {
+      firstName: form.firstName.trim(),
+      lastName: form.lastName.trim(),
+      documentType: form.docType,
+      documentNumber: form.docNumber.trim(),
+      email: form.email.trim(),
+      phone: form.phone.trim(),
+      password: form.password,
+    };
+    this.authService.register(request).subscribe({
+      next: () => {
         this.loading.set(false);
-        this.showSuccessBanner.set(true);
-
-        this.authService.login(user.email, form.password ?? '').subscribe({
-          next: () => void this.router.navigate(['/']),
-          error: () => void this.router.navigate(['/login']),
+        void this.router.navigate(['/login'], {
+          queryParams: { [LOGIN_NOTICE_PARAM]: 'registro-exitoso' satisfies LoginNotice },
         });
       },
-      error: (error) => {
+      error: (error: unknown) => {
         this.loading.set(false);
-        this.registrationError.set(error.status === 409
-          ? 'El correo o documento ya está registrado.'
-          : 'No fue posible crear la cuenta. Inténtalo nuevamente.');
+        this.handleError(error);
       },
     });
   }
 
-  goToLogin() {
-    void this.router.navigate(['/login']);
+  private handleError(error: unknown) {
+    const code = errorCode(error);
+    const message = errorMessage(error, 'No fue posible crear la cuenta. Inténtalo nuevamente.');
+    if (code === 'EMAIL_ALREADY_REGISTERED') {
+      this.serverErrors.set({ email: message });
+    } else if (code === 'DOCUMENT_ALREADY_REGISTERED') {
+      this.serverErrors.set({ docNumber: message });
+    } else if (code === 'VALIDATION_ERROR') {
+      const errors: Partial<Record<FieldName, string>> = {};
+      for (const field of fieldErrors(error)) {
+        const control = DTO_TO_CONTROL[field];
+        if (control) errors[control] = CLIENT_MESSAGES[control];
+      }
+      this.serverErrors.set(errors);
+    }
+    this.registrationError.set(message);
   }
 }
