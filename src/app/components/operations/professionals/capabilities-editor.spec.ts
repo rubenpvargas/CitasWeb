@@ -121,3 +121,29 @@ describe('Capacidades del profesional (HU-011)', () => {
     expect(q('[data-testid="cap-error"]')?.textContent).toContain('ya no está activa');
   });
 });
+
+describe('Capacidades con ids del backend (HU-011)', () => {
+  it('preselecciona especialidades, sedes y principal desde specialtyIds/primarySpecialtyId/locationIds', async () => {
+    TestBed.configureTestingModule({
+      imports: [ProfessionalsAdminComponent],
+      providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
+    });
+    TestBed.inject(AppConfigService).set({ apiUrl: TEST_API_URL });
+    const http = TestBed.inject(HttpTestingController);
+    const fixture = TestBed.createComponent(ProfessionalsAdminComponent);
+    const el: HTMLElement = fixture.nativeElement;
+    await fixture.whenStable();
+    http.expectOne(`${A}/professionals`).flush([{ ...PROS[0], specialtyIds: [1, 2], primarySpecialtyId: 1, locationIds: [6] }]);
+    await fixture.whenStable();
+    (el.querySelector('[data-testid="cap-open-1"]') as HTMLButtonElement).click();
+    await fixture.whenStable();
+    http.expectOne(`${A}/specialties`).flush(SPECS);
+    http.expectOne(`${A}/locations`).flush(LOCS);
+    await fixture.whenStable();
+    expect((el.querySelector('[data-testid="cap-spec-1"]') as HTMLInputElement).checked).toBe(true);
+    expect((el.querySelector('[data-testid="cap-loc-6"]') as HTMLInputElement).checked).toBe(true);
+    expect((el.querySelector('[data-testid="cap-loc-5"]') as HTMLInputElement).checked).toBe(false);
+    expect((el.querySelector('[data-testid="cap-primary"]') as HTMLSelectElement).value).toBe('1');
+    http.verify();
+  });
+});

@@ -22,6 +22,8 @@ export interface CalendarBlockDto {
   totalSlots: number;
   committedSlots: number;
   editable: boolean;
+  /** Aditivo (decisión backend): motivo cuando `editable` es `false`. */
+  notEditableReason?: 'PAST_BLOCK' | 'BLOCK_COMMITTED' | null;
 }
 
 /** Agenda aprobada del profesional (HU-023, Ola F); forma del controlador actual. */

@@ -12,6 +12,10 @@ const CAL = `${TEST_API_URL}/api/v1/professional/calendar`;
 describe('lockReason (HU-014)', () => {
   it('editable → sin motivo', () => expect(lockReason(BLOCKS[1], '2026-10-02T10:00')).toBeNull());
   it('pasado → PAST_BLOCK', () => expect(lockReason(BLOCKS[2], '2026-10-02T10:00')).toContain('pasado'));
+  it('prefiere notEditableReason del backend', () => {
+    expect(lockReason({ ...BLOCKS[1], editable: false, notEditableReason: 'BLOCK_COMMITTED' }, '2026-10-02T10:00')).toContain('reservadas');
+    expect(lockReason({ ...BLOCKS[0], notEditableReason: 'PAST_BLOCK' }, '2026-10-02T10:00')).toContain('pasado');
+  });
   it('con cupos comprometidos → BLOCK_COMMITTED', () => expect(lockReason(BLOCKS[0], '2026-10-02T10:00')).toContain('reservadas o retenidas'));
 });
 
