@@ -252,7 +252,7 @@ export function slotKey(slot: AvailabilitySlotDto): string {
           <section class="p-4 rounded-2xl bg-surface-container-low border border-outline-variant/40 shadow-xs flex flex-col gap-3" aria-labelledby="summary-title" data-testid="booking-summary">
             <div class="flex items-center justify-between pb-2 border-b border-outline-variant/30">
               <h2 id="summary-title" class="text-[13px] font-bold text-primary uppercase tracking-wide m-0">Resumen del Agendamiento</h2>
-              <span class="text-[11px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-semibold">{{ isGeneral() ? 'Cita general' : 'Cita especializada' }}</span>
+              <span class="text-[11px] px-2 py-0.5 rounded-full font-semibold" [class]="isGeneral() ? 'bg-emerald-100 text-emerald-800' : 'bg-surface-container-high text-primary'">{{ isGeneral() ? 'Cita general' : 'Cita especializada · requiere aprobación' }}</span>
             </div>
             <div class="flex flex-col gap-1 text-[13px]">
               <p><strong class="text-primary">Especialidad:</strong> {{ slot.specialtyName }}</p>
@@ -266,6 +266,12 @@ export function slotKey(slot: AvailabilitySlotDto): string {
                 [value]="reason()" (input)="reason.set($any($event.target).value)" [disabled]="bookingLoading()"
                 placeholder="Describe brevemente el motivo (sin datos sensibles)"></textarea>
             </div>
+            @if (!isGeneral()) {
+              <p class="text-[12px] text-on-surface-variant flex items-start gap-1.5" data-testid="booking-specialized-note">
+                <span class="material-symbols-outlined text-[16px] text-secondary" aria-hidden="true">info</span>
+                Las citas especializadas requieren aprobación administrativa. Recibirás el resultado en "Mis citas".
+              </p>
+            }
             <div role="alert" aria-live="assertive" aria-atomic="true">
               @if (bookingError()) { <p class="ui-alert-error" data-testid="booking-error">{{ bookingError() }}</p> }
             </div>
@@ -279,7 +285,7 @@ export function slotKey(slot: AvailabilitySlotDto): string {
               >
                 @if (bookingLoading()) {
                   <span class="material-symbols-outlined text-base animate-spin" aria-hidden="true">progress_activity</span>
-                  <span>Confirmando cita médica...</span>
+                  <span>{{ isGeneral() ? 'Confirmando cita médica...' : 'Enviando solicitud...' }}</span>
                 } @else {
                   <span class="material-symbols-outlined text-[18px]" aria-hidden="true">event_available</span>
                   <span>{{ isGeneral() ? 'Confirmar y agendar cita' : 'Enviar solicitud de cita' }}</span>
@@ -297,13 +303,24 @@ export function slotKey(slot: AvailabilitySlotDto): string {
       <div class="fixed inset-0 z-50 bg-[#283044]/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
         <div role="dialog" aria-modal="true" aria-labelledby="booking-success-title" aria-describedby="booking-success-detail" data-testid="booking-success"
           class="w-full max-w-sm bg-surface-container-lowest rounded-2xl p-6 shadow-xl flex flex-col items-center text-center border border-outline-variant/40">
-          <div class="w-16 h-16 rounded-full bg-[#89f5e7] flex items-center justify-center text-[#003d37] mb-4 shadow-xs">
-            <span class="material-symbols-outlined text-[36px]" aria-hidden="true">check_circle</span>
-          </div>
-          <h2 id="booking-success-title" class="text-xl text-primary font-semibold tracking-tight mb-1">¡Cita agendada con éxito!</h2>
-          <p class="text-[13px] text-on-surface-variant mb-4 leading-relaxed">
-            Tu cita para <strong>{{ appt.specialtyName }}</strong> con <strong>{{ appt.professionalName }}</strong> quedó registrada.
-          </p>
+          @if (appt.status === 'APPROVED') {
+            <div class="w-16 h-16 rounded-full bg-[#89f5e7] flex items-center justify-center text-[#003d37] mb-4 shadow-xs">
+              <span class="material-symbols-outlined text-[36px]" aria-hidden="true">check_circle</span>
+            </div>
+            <h2 id="booking-success-title" class="text-xl text-primary font-semibold tracking-tight mb-1">¡Cita agendada con éxito!</h2>
+            <p class="text-[13px] text-on-surface-variant mb-4 leading-relaxed">
+              Tu cita para <strong>{{ appt.specialtyName }}</strong> con <strong>{{ appt.professionalName }}</strong> quedó registrada.
+            </p>
+          } @else {
+            <div class="w-16 h-16 rounded-full bg-surface-container-high flex items-center justify-center text-secondary mb-4 shadow-xs">
+              <span class="material-symbols-outlined text-[36px]" aria-hidden="true">hourglass_top</span>
+            </div>
+            <h2 id="booking-success-title" class="text-xl text-primary font-semibold tracking-tight mb-1">Solicitud pendiente de aprobación</h2>
+            <p class="text-[13px] text-on-surface-variant mb-4 leading-relaxed" data-testid="booking-pending-note">
+              Enviamos tu solicitud de <strong>{{ appt.specialtyName }}</strong> con <strong>{{ appt.professionalName }}</strong>.
+              Aún no es una cita confirmada: un administrador la revisará y el horario queda reservado para ti mientras tanto.
+            </p>
+          }
           <div id="booking-success-detail" class="w-full bg-surface-container-low p-3 rounded-xl mb-4 text-left text-[12px] text-on-surface-variant">
             <p class="font-semibold text-primary">{{ longDate(appt.startAt) }} · {{ time(appt.startAt) }}–{{ time(appt.endAt) }}</p>
             <p>{{ appt.locationName || appt.locationCode }}</p>
@@ -314,7 +331,7 @@ export function slotKey(slot: AvailabilitySlotDto): string {
             (click)="finishAndGoDashboard()"
             class="w-full h-11 rounded-lg bg-primary-container text-white text-[13px] font-semibold flex items-center justify-center gap-2 shadow-xs hover:bg-primary transition-all cursor-pointer border-0"
           >
-            <span>Ver en Inicio</span>
+            <span>{{ appt.status === 'APPROVED' ? 'Ver en Inicio' : 'Entendido' }}</span>
             <span class="material-symbols-outlined text-[18px]" aria-hidden="true">arrow_forward</span>
           </button>
         </div>
