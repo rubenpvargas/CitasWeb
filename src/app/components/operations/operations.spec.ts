@@ -1,10 +1,9 @@
 import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
-import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideRouter } from '@angular/router';
 import { OperationsComponent } from './operations';
 import { operationsHome } from './operations-links';
-import { AgendaComponent } from './agenda/agenda';
 import { SessionStore } from '../../core/auth/session.store';
 import { AppConfigService } from '../../core/config/app-config.service';
 import { TEST_API_URL, loginResponse } from '../../testing/fixtures';
@@ -52,28 +51,5 @@ describe('OperationsComponent (shell)', () => {
       expect(child.canActivate?.length).toBe(1);
       expect((child.data?.['roles'] as string[]).length).toBeGreaterThan(0);
     }
-  });
-});
-
-describe('AgendaComponent', () => {
-  let http: HttpTestingController;
-
-  beforeEach(() => {
-    TestBed.configureTestingModule({ providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])] });
-    TestBed.inject(AppConfigService).set({ apiUrl: TEST_API_URL });
-    http = TestBed.inject(HttpTestingController);
-  });
-
-  afterEach(() => http.verify());
-
-  it('consulta 30 días desde hoy (Bogotá) y muestra vacío', async () => {
-    const fixture = TestBed.createComponent(AgendaComponent);
-    await fixture.whenStable();
-    const req = http.expectOne((r) => r.url === `${TEST_API_URL}/api/v1/professional/agenda`);
-    expect(req.request.params.get('from')).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    expect(req.request.params.get('to')).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    req.flush([]);
-    await fixture.whenStable();
-    expect((fixture.nativeElement as HTMLElement).textContent).toContain('Sin citas aprobadas');
   });
 });

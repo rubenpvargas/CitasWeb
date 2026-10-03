@@ -106,3 +106,9 @@ export const MIXED = [
     pendingReschedule: { id: 70, requestedStartAt: '2099-03-05T10:00:00', requestedEndAt: '2099-03-05T10:30:00', locationCode: 'ICV' },
   }),
 ];
+
+/** Agenda profesional sintética (HU-023/024): solo nombre del paciente. */
+export const AGENDA = [
+  { id: 1, startAt: '2026-10-01T08:00:00', endAt: '2026-10-01T08:30:00', locationCode: 'HIC', specialtyName: 'Medicina General', patientName: 'Paciente Sintético Uno', closable: true },
+  { id: 2, startAt: '2099-10-02T09:00:00', endAt: '2099-10-02T09:30:00', locationCode: 'ICV', specialtyName: 'Medicina General', patientName: 'Paciente Sintético Dos', closable: false },
+];

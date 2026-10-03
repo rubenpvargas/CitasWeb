@@ -26,16 +26,35 @@ export interface CalendarBlockDto {
   notEditableReason?: 'PAST_BLOCK' | 'BLOCK_COMMITTED' | null;
 }
 
-/** Agenda aprobada del profesional (HU-023, Ola F); forma del controlador actual. */
+/**
+ * HU-023 cita aprobada de la agenda propia: solo nombre del paciente (sin
+ * documento, email ni teléfono) y `closable` calculado por el backend.
+ */
 export interface AgendaItemDto {
   id: number;
   startAt: string;
-  endAt?: string;
-  status?: string;
+  endAt: string;
+  locationCode: string;
+  locationName?: string;
   specialtyName: string;
-  locationCode?: string;
-  patientFirstName?: string;
-  patientLastName?: string;
+  patientName: string;
+  closable: boolean;
+}
+
+export type CloseOutcome = 'COMPLETED' | 'NO_SHOW';
+
+/** Respaldo para la forma anterior (`patientFirstName`/`patientLastName`, sin `closable`). */
+function normalizeAgendaItem(raw: Partial<AgendaItemDto> & { patientFirstName?: string; patientLastName?: string }): AgendaItemDto {
+  return {
+    id: raw.id ?? 0,
+    startAt: raw.startAt ?? '',
+    endAt: raw.endAt ?? '',
+    locationCode: raw.locationCode ?? '',
+    locationName: raw.locationName,
+    specialtyName: raw.specialtyName ?? '',
+    patientName: raw.patientName ?? `${raw.patientFirstName ?? ''} ${raw.patientLastName ?? ''}`.trim(),
+    closable: raw.closable ?? false,
+  };
 }
 
 /** Acepta el nombre del contrato (`date`) o el del controlador actual (`availableDate`). */
@@ -82,6 +101,13 @@ export class ProfessionalApi {
   agenda(from: string, to: string, locationCode?: string | null): Observable<AgendaItemDto[]> {
     let params = new HttpParams().set('from', from).set('to', to);
     if (locationCode) params = params.set('locationCode', locationCode);
-    return this.http.get<AgendaItemDto[]>(this.url('/agenda'), { params });
+    return this.http
+      .get<(Partial<AgendaItemDto> & { patientFirstName?: string; patientLastName?: string })[]>(this.url('/agenda'), { params })
+      .pipe(map((items) => items.map(normalizeAgendaItem)));
+  }
+
+  /** HU-024 `POST /professional/appointments/{id}/close {outcome}`. */
+  closeAppointment(id: number, outcome: CloseOutcome): Observable<unknown> {
+    return this.http.post(this.url(`/appointments/${id}/close`), { outcome });
   }
 }

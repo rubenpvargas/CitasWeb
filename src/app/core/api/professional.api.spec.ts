@@ -51,8 +51,21 @@ describe('ProfessionalApi', () => {
     expect(result[0]).toEqual(expect.objectContaining({ date: '2026-10-11', editable: false, totalSlots: 0 }));
   });
 
-  it('agenda', () => {
-    api.agenda('2026-10-01', '2026-10-31').subscribe();
-    http.expectOne((r) => r.url === `${P}/agenda` && r.params.get('from') === '2026-10-01').flush([]);
+  it('agenda (contrato y respaldo de forma anterior)', () => {
+    let items: { patientName: string; closable: boolean }[] = [];
+    api.agenda('2026-10-01', '2026-10-07', 'HIC').subscribe((r) => (items = r));
+    const req = http.expectOne((r) => r.url === `${P}/agenda` && r.params.get('from') === '2026-10-01');
+    expect(req.request.params.get('locationCode')).toBe('HIC');
+    req.flush([
+      { id: 1, startAt: '2026-10-01T08:00:00', endAt: '2026-10-01T08:30:00', locationCode: 'HIC', specialtyName: 'X', patientName: 'Ana P.', closable: true },
+      { id: 2, startAt: '2026-10-01T09:00:00', specialtyName: 'X', patientFirstName: 'Luis', patientLastName: 'Q' },
+    ]);
+    expect(items.map((i) => i.patientName)).toEqual(['Ana P.', 'Luis Q']);
+    expect(items[1].closable).toBe(false);
+  });
+
+  it('close envía {outcome}', () => {
+    api.closeAppointment(4, 'NO_SHOW').subscribe();
+    expect(http.expectOne({ method: 'POST', url: `${P}/appointments/4/close` }).request.body).toEqual({ outcome: 'NO_SHOW' });
   });
 });
