@@ -98,6 +98,13 @@ export const routes: Routes = [
         loadComponent: () => import('./components/operations/eps/eps-admin').then((m) => m.EpsAdminComponent),
       },
       {
+        path: 'especialidades',
+        title: 'Especialidades | Operación | Portal de Citas HIC | FCV',
+        canActivate: [roleGuard],
+        data: { roles: ADMIN_ONLY },
+        loadComponent: () => import('./components/operations/specialties/specialties-admin').then((m) => m.SpecialtiesAdminComponent),
+      },
+      {
         path: 'agenda',
         title: 'Agenda | Operación | Portal de Citas HIC | FCV',
         canActivate: [roleGuard],

@@ -11,6 +11,7 @@ export interface OperationsLink {
 export const OPERATIONS_LINKS: readonly OperationsLink[] = [
   { path: 'bandeja', label: 'Bandeja', icon: 'inbox', roles: ['ADMIN'] },
   { path: 'eps', label: 'EPS y planes', icon: 'health_and_safety', roles: ['ADMIN'] },
+  { path: 'especialidades', label: 'Especialidades', icon: 'stethoscope', roles: ['ADMIN'] },
   { path: 'agenda', label: 'Agenda', icon: 'calendar_month', roles: ['PROFESSIONAL'] },
 ];
 
