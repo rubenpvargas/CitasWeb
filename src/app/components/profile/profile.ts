@@ -4,6 +4,7 @@ import { Router } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
 import { SessionStore } from '../../core/auth/session.store';
 import { ProfileApi, ProfileDto } from '../../core/api/profile.api';
+import { AffiliationComponent } from './affiliation';
 import { errorCode, errorMessage, fieldErrors } from '../../core/api/api-errors';
 
 type EditableField = 'firstName' | 'lastName' | 'phone';
@@ -16,7 +17,7 @@ const FIELD_MESSAGES: Record<EditableField, string> = {
 @Component({
   selector: 'app-profile',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, AffiliationComponent],
   template: `
     <header class="sticky top-0 w-full z-40 bg-surface-container-lowest/95 backdrop-blur-md shadow-xs border-b border-outline-variant/30">
       <div class="h-16 px-4 flex items-center justify-between max-w-lg mx-auto w-full">
@@ -170,6 +171,11 @@ const FIELD_MESSAGES: Record<EditableField, string> = {
           </section>
         }
 
+        <!-- Afiliación (HU-006), solo para pacientes -->
+        @if (isUser()) {
+          <app-affiliation />
+        }
+
         <!-- Seguridad y Acceso -->
         <div class="bg-surface-container-lowest rounded-2xl p-5 shadow-xs border border-outline-variant/40 flex flex-col gap-3">
           <h3 class="text-[13px] font-bold text-primary uppercase tracking-wide">Seguridad de la Cuenta</h3>
@@ -240,6 +246,7 @@ export class ProfileComponent {
   private readonly fb = inject(FormBuilder);
 
   readonly loggingOut = signal(false);
+  readonly isUser = computed(() => this.session.hasAnyRole(['USER']));
   readonly profile = signal<ProfileDto | null>(null);
   readonly loadState = signal<'loading' | 'ready' | 'error'>('loading');
   readonly loadError = signal('');

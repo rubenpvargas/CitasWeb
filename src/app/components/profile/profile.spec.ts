@@ -34,6 +34,10 @@ describe('ProfileComponent', () => {
     fixture = TestBed.createComponent(ProfileComponent);
     el = fixture.nativeElement;
     await fixture.whenStable();
+    // La sección de afiliación (HU-006) tiene sus propias pruebas.
+    http
+      .match((r) => r.url.endsWith('/me/affiliations') || r.url.endsWith('/insurance/eps'))
+      .forEach((r) => r.flush([]));
     if (flushProfile === 'error') {
       http.expectOne(ME_URL).flush({ code: 'INTERNAL_ERROR' }, { status: 500, statusText: 'Error' });
     } else if (flushProfile) {
