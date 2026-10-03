@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, inject, signal, computed } from '@angular/core';
+import { Router } from '@angular/router';
 import { PortalService } from '../../services/portal.service';
 import { Doctor } from '../../models/portal.types';
 
@@ -306,6 +307,7 @@ import { Doctor } from '../../models/portal.types';
 })
 export class BookingComponent {
   private readonly portalService = inject(PortalService);
+  private readonly router = inject(Router);
 
   readonly specialties = [
     { name: 'Cardiología Adultos', sub: 'Alta complejidad', icon: 'cardiology' },
@@ -396,10 +398,10 @@ export class BookingComponent {
 
   finishAndGoDashboard() {
     this.bookingSuccess.set(false);
-    this.portalService.setScreen('dashboard');
+    void this.router.navigate(['/inicio']);
   }
 
   goBack() {
-    this.portalService.setScreen('dashboard');
+    void this.router.navigate(['/inicio']);
   }
 }

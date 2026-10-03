@@ -1,12 +1,15 @@
-import { ChangeDetectionStrategy, Component, inject, signal, computed } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, input, signal, computed } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
-import { PortalService } from '../../services/portal.service';
-import { AuthService } from '../../services/auth.service';
+import { Router, RouterLink } from '@angular/router';
+import { AuthService } from '../../core/auth/auth.service';
+import { errorCode, errorMessage } from '../../core/api/api-errors';
+import { LOGIN_NOTICE_PARAM, LoginNotice } from '../../core/auth/login-notice';
 
 @Component({
   selector: 'app-reset-password',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, RouterLink],
   template: `
     <main class="flex-1 flex flex-col relative w-full max-w-lg mx-auto px-4 pt-4 pb-12 bg-surface justify-center">
       <div class="flex flex-col w-full py-2 pb-6">
@@ -28,36 +31,31 @@ import { AuthService } from '../../services/auth.service';
           </span>
         </div>
 
-        <!-- Banner de Enlace Expirado (Demo interactiva) -->
+        <!-- Banner de Enlace no válido / expirado / ausente -->
+        <div role="alert" aria-live="assertive" aria-atomic="true">
         @if (showExpiredBanner()) {
-          <div class="mb-4 p-4 rounded-2xl bg-error-container text-on-error-container border border-[#fecdd3] animate-fade-in">
+          <div data-testid="reset-invalid-token" class="mb-4 p-4 rounded-2xl bg-error-container text-on-error-container border border-[#fecdd3] animate-fade-in">
             <div class="flex items-start gap-3">
-              <span class="material-symbols-outlined text-[20px] text-error shrink-0 mt-0.5">lock_clock</span>
+              <span class="material-symbols-outlined text-[20px] text-error shrink-0 mt-0.5" aria-hidden="true">lock_clock</span>
               <div class="flex-1">
                 <p class="text-[14px] font-semibold text-error mb-0.5">Enlace no válido o expirado</p>
                 <p class="text-[12px] text-on-error-container leading-relaxed">
-                  El enlace de recuperación ha expirado por motivos de seguridad médica y protección de datos. Solicita uno nuevo para continuar.
+                  El enlace de recuperación no es válido, ya fue usado o expiró por motivos de seguridad médica y protección de datos. Solicita uno nuevo para continuar.
                 </p>
                 <div class="mt-3 flex items-center gap-2">
-                  <button
-                    type="button"
-                    (click)="goToRecover()"
+                  <a
+                    routerLink="/recuperar"
+                    data-testid="request-new-link"
                     class="px-3 py-1.5 rounded-lg bg-error text-white text-[12px] font-medium hover:opacity-90 transition-opacity cursor-pointer border-0"
                   >
                     Solicitar nuevo enlace
-                  </button>
-                  <button
-                    type="button"
-                    (click)="toggleExpiredDemo()"
-                    class="px-2 py-1 text-[12px] font-medium text-error hover:underline cursor-pointer bg-transparent border-0"
-                  >
-                    Descartar
-                  </button>
+                  </a>
                 </div>
               </div>
             </div>
           </div>
         }
+        </div>
 
         <!-- Tarjeta Principal del Flujo -->
         <div class="bg-surface-container-lowest rounded-2xl p-6 shadow-xs border border-outline-variant/40">
@@ -74,20 +72,22 @@ import { AuthService } from '../../services/auth.service';
             </p>
           </header>
 
-          <!-- Banner de Error si no coinciden -->
-          @if (showMismatchError()) {
-            <div class="mb-4 p-3 rounded-lg bg-error-container text-on-error-container border border-[#fecdd3]">
+          <!-- Banner de Error (validación, red o servidor) -->
+          <div role="alert" aria-live="assertive" aria-atomic="true">
+          @if (formError()) {
+            <div data-testid="reset-error" class="mb-4 p-3 rounded-lg bg-error-container text-on-error-container border border-[#fecdd3]">
               <div class="flex items-center gap-2">
-                <span class="material-symbols-outlined text-[18px] text-error">error</span>
+                <span class="material-symbols-outlined text-[18px] text-error" aria-hidden="true">error</span>
                 <p class="text-[12px] text-error font-medium">
-                  Las contraseñas no coinciden. Por favor revisa ambos campos.
+                  {{ formError() }}
                 </p>
               </div>
             </div>
           }
+          </div>
 
           <!-- Formulario -->
-          <form [formGroup]="resetForm" (ngSubmit)="onSubmit()" class="flex flex-col gap-4">
+          <form [formGroup]="resetForm" (ngSubmit)="onSubmit()" [attr.aria-busy]="loading()" novalidate class="flex flex-col gap-4">
             
             <!-- Campo Nueva Contraseña -->
             <div class="flex flex-col gap-1.5">
@@ -102,6 +102,7 @@ import { AuthService } from '../../services/auth.service';
                   id="new-password"
                   [type]="showNewPassword() ? 'text' : 'password'"
                   formControlName="newPassword"
+                  aria-describedby="password-requirements"
                   placeholder="Introduce al menos 8 caracteres"
                   autocomplete="new-password"
                   class="w-full h-11 px-3.5 pr-11 rounded-lg bg-surface-container-low text-on-surface text-[14px] border border-outline-variant/50 focus:border-secondary focus:ring-2 focus:ring-secondary/20 focus:bg-surface-container-lowest transition-all placeholder:text-outline"
@@ -109,7 +110,7 @@ import { AuthService } from '../../services/auth.service';
                 <button
                   type="button"
                   (click)="toggleShowNewPassword()"
-                  aria-label="Alternar visibilidad"
+                  aria-label="Mostrar u ocultar nueva contraseña"
                   class="absolute right-3 p-1 text-outline hover:text-primary transition-colors cursor-pointer bg-transparent border-0"
                 >
                   <span class="material-symbols-outlined text-[20px]">
@@ -127,7 +128,7 @@ import { AuthService } from '../../services/auth.service';
             </div>
 
             <!-- Lista de Requisitos de Protección de Datos Clínicos -->
-            <div class="p-3.5 rounded-xl bg-surface-container-low flex flex-col gap-2 border border-outline-variant/30">
+            <div id="password-requirements" class="p-3.5 rounded-xl bg-surface-container-low flex flex-col gap-2 border border-outline-variant/30">
               <p class="text-[11px] text-on-surface-variant font-semibold tracking-wide uppercase">
                 Requisitos de protección de datos clínicos:
               </p>
@@ -169,7 +170,7 @@ import { AuthService } from '../../services/auth.service';
                 <button
                   type="button"
                   (click)="toggleShowConfirmPassword()"
-                  aria-label="Alternar visibilidad"
+                  aria-label="Mostrar u ocultar confirmación de contraseña"
                   class="absolute right-3 p-1 text-outline hover:text-primary transition-colors cursor-pointer bg-transparent border-0"
                 >
                   <span class="material-symbols-outlined text-[20px]">
@@ -183,7 +184,8 @@ import { AuthService } from '../../services/auth.service';
             <div class="pt-1">
               <button
                 type="submit"
-                [disabled]="loading()"
+                data-testid="reset-submit"
+                [disabled]="loading() || !token()"
                 class="w-full h-11 rounded-lg bg-primary-container text-white text-[14px] font-semibold flex items-center justify-center gap-2 shadow-xs hover:bg-primary active:scale-[0.99] transition-all cursor-pointer disabled:opacity-75"
               >
                 @if (loading()) {
@@ -206,35 +208,14 @@ import { AuthService } from '../../services/auth.service';
           </form>
         </div>
 
-        <!-- Barra Demostración de Estados UX -->
-        <div class="mt-4 p-3 rounded-xl bg-surface-container flex items-center justify-between border border-outline-variant/20">
-          <span class="text-[12px] text-on-surface-variant font-medium">Demo de Estados UX:</span>
-          <div class="flex items-center gap-2">
-            <button
-              type="button"
-              (click)="toggleExpiredDemo()"
-              class="px-2.5 py-1 rounded-md bg-surface text-outline hover:text-primary text-[12px] font-medium transition-colors border border-outline-variant/40 cursor-pointer"
-            >
-              Enlace Expirado
-            </button>
-            <button
-              type="button"
-              (click)="openSuccessModal()"
-              class="px-2.5 py-1 rounded-md bg-secondary text-white text-[12px] font-medium transition-colors cursor-pointer border-0"
-            >
-              Éxito
-            </button>
-          </div>
-        </div>
-
         <!-- Modal de Éxito / Confirmación -->
         @if (showSuccessModal()) {
           <div class="fixed inset-0 z-50 bg-[#283044]/60 backdrop-blur-xs flex items-center justify-center px-4 animate-fade-in">
-            <div class="w-full max-w-sm bg-surface-container-lowest rounded-2xl p-6 shadow-lg flex flex-col items-center text-center border border-outline-variant/40">
+            <div role="dialog" aria-modal="true" aria-labelledby="reset-success-title" data-testid="reset-success" class="w-full max-w-sm bg-surface-container-lowest rounded-2xl p-6 shadow-lg flex flex-col items-center text-center border border-outline-variant/40">
               <div class="w-16 h-16 rounded-full bg-[#89f5e7] flex items-center justify-center text-[#003d37] mb-4 shadow-xs">
                 <span class="material-symbols-outlined text-[36px]">check_circle</span>
               </div>
-              <h2 class="text-xl text-primary font-semibold tracking-tight mb-2">
+              <h2 id="reset-success-title" class="text-xl text-primary font-semibold tracking-tight mb-2">
                 Contraseña actualizada con éxito
               </h2>
               <p class="text-[13px] text-on-surface-variant mb-6 leading-relaxed">
@@ -242,6 +223,7 @@ import { AuthService } from '../../services/auth.service';
               </p>
               <button
                 type="button"
+                data-testid="reset-go-login"
                 (click)="goToLogin()"
                 class="w-full h-11 rounded-lg bg-primary-container text-white text-[14px] font-semibold flex items-center justify-center gap-2 shadow-xs hover:bg-primary active:scale-[0.99] transition-all cursor-pointer border-0"
               >
@@ -257,29 +239,30 @@ import { AuthService } from '../../services/auth.service';
   `
 })
 export class ResetPasswordComponent {
-  private readonly portalService = inject(PortalService);
+  private readonly router = inject(Router);
   private readonly fb = inject(FormBuilder);
   private readonly authService = inject(AuthService);
+
+  /** Token de un solo uso recibido en `/restablecer?token=...`. */
+  readonly token = input<string | undefined>();
 
   readonly showNewPassword = signal<boolean>(false);
   readonly showConfirmPassword = signal<boolean>(false);
   readonly loading = signal<boolean>(false);
-  readonly showExpiredBanner = signal<boolean>(false);
-  readonly showMismatchError = signal<boolean>(false);
+  readonly tokenRejected = signal<boolean>(false);
+  readonly formError = signal<string | null>(null);
   readonly showSuccessModal = signal<boolean>(false);
 
-  readonly resetForm = this.fb.group({
-    newPassword: ['', [Validators.required, Validators.minLength(8)]],
-    confirmPassword: ['', [Validators.required]]
+  /** Sin token o con token rechazado por la API (409 INVALID_RESET_TOKEN). */
+  readonly showExpiredBanner = computed(() => !this.token() || this.tokenRejected());
+
+  readonly resetForm = this.fb.nonNullable.group({
+    newPassword: ['', [Validators.required, Validators.minLength(8), Validators.maxLength(72)]],
+    confirmPassword: ['', [Validators.required]],
   });
 
-  readonly newPassVal = signal<string>('');
-
-  constructor() {
-    this.resetForm.get('newPassword')?.valueChanges.subscribe((val) => {
-      this.newPassVal.set(val || '');
-    });
-  }
+  readonly newPassVal = toSignal(this.resetForm.controls.newPassword.valueChanges, { initialValue: '' });
+  readonly confirmVal = toSignal(this.resetForm.controls.confirmPassword.valueChanges, { initialValue: '' });
 
   readonly hasMinLength = computed(() => this.newPassVal().length >= 8);
   readonly hasUpper = computed(() => /[A-Z]/.test(this.newPassVal()));
@@ -334,8 +317,7 @@ export class ResetPasswordComponent {
 
   readonly passwordsMatch = computed(() => {
     const p1 = this.newPassVal();
-    const p2 = this.resetForm.get('confirmPassword')?.value;
-    return p1.length > 0 && p1 === p2;
+    return p1.length > 0 && p1 === this.confirmVal();
   });
 
   toggleShowNewPassword() {
@@ -346,46 +328,44 @@ export class ResetPasswordComponent {
     this.showConfirmPassword.update((v) => !v);
   }
 
-  toggleExpiredDemo() {
-    this.showExpiredBanner.update((v) => !v);
-  }
-
-  openSuccessModal() {
-    this.showSuccessModal.set(true);
-  }
-
   onSubmit() {
-    const p1 = this.resetForm.get('newPassword')?.value;
-    const p2 = this.resetForm.get('confirmPassword')?.value;
+    const token = this.token();
+    if (this.loading() || !token) return;
+    const { newPassword, confirmPassword } = this.resetForm.getRawValue();
 
-    if (!p1 || p1 !== p2 || this.score() < 3) {
-      this.showMismatchError.set(true);
+    if (newPassword.length > 72 || this.score() < 3) {
+      this.formError.set('La contraseña no cumple los requisitos de seguridad indicados.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      this.formError.set('Las contraseñas no coinciden. Por favor revisa ambos campos.');
       return;
     }
 
-    this.showMismatchError.set(false);
+    this.formError.set(null);
     this.loading.set(true);
 
-    const token = sessionStorage.getItem('fcv.reset-token') ?? '';
-    this.authService.confirmPasswordReset(token, p1).subscribe({
+    this.authService.confirmPasswordReset(token, newPassword).subscribe({
       next: () => {
         this.loading.set(false);
-        sessionStorage.removeItem('fcv.reset-token');
+        this.resetForm.reset();
         this.showSuccessModal.set(true);
       },
-      error: () => {
+      error: (error: unknown) => {
         this.loading.set(false);
-        this.showExpiredBanner.set(true);
+        if (errorCode(error) === 'INVALID_RESET_TOKEN') {
+          this.tokenRejected.set(true);
+          return;
+        }
+        this.formError.set(errorMessage(error, 'No fue posible actualizar la contraseña. Inténtalo nuevamente.'));
       },
     });
   }
 
   goToLogin() {
     this.showSuccessModal.set(false);
-    this.portalService.setScreen('login');
-  }
-
-  goToRecover() {
-    this.portalService.setScreen('recuperar');
+    void this.router.navigate(['/login'], {
+      queryParams: { [LOGIN_NOTICE_PARAM]: 'contrasena-actualizada' satisfies LoginNotice },
+    });
   }
 }

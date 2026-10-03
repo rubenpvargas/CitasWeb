@@ -1,14 +1,3 @@
-export type ScreenType = 
-  | 'login' 
-  | 'registro' 
-  | 'recuperar' 
-  | 'reset-password' 
-  | 'dashboard' 
-  | 'solicitar' 
-  | 'mis-citas' 
-  | 'perfil'
-  | 'operacion';
-
 export interface Doctor {
   id: string;
   name: string;

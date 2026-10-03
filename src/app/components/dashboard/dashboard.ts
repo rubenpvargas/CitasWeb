@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { Router } from '@angular/router';
 import { PortalService, HIC_LOGO_IMG } from '../../services/portal.service';
 import { Cita } from '../../models/portal.types';
 
@@ -413,6 +414,7 @@ import { Cita } from '../../models/portal.types';
 })
 export class DashboardComponent {
   readonly portalService = inject(PortalService);
+  private readonly router = inject(Router);
   readonly logoImg = HIC_LOGO_IMG;
 
   readonly patient = this.portalService.activePatient;
@@ -425,20 +427,24 @@ export class DashboardComponent {
   readonly showFaqModal = signal<boolean>(false);
   readonly calendarToast = signal<boolean>(false);
 
+  constructor() {
+    this.portalService.loadAppointments();
+  }
+
   toggleEmptyState() {
     this.portalService.toggleEmptyState();
   }
 
   goToBooking() {
-    this.portalService.setScreen('solicitar');
+    void this.router.navigate(['/reservar']);
   }
 
   goToMyAppointments() {
-    this.portalService.setScreen('mis-citas');
+    void this.router.navigate(['/mis-citas']);
   }
 
   goToProfile() {
-    this.portalService.setScreen('perfil');
+    void this.router.navigate(['/perfil']);
   }
 
   openPreparation(cita: Cita) {

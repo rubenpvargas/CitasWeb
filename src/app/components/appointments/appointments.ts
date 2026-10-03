@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, inject, signal, computed } from '@angular/core';
+import { Router } from '@angular/router';
 import { PortalService } from '../../services/portal.service';
 import { Cita } from '../../models/portal.types';
 
@@ -185,6 +186,7 @@ import { Cita } from '../../models/portal.types';
 })
 export class AppointmentsComponent {
   private readonly portalService = inject(PortalService);
+  private readonly router = inject(Router);
 
   readonly activeTab = signal<'proximas' | 'historial' | 'canceladas'>('proximas');
   readonly prepCita = signal<Cita | null>(null);
@@ -192,6 +194,10 @@ export class AppointmentsComponent {
   readonly upcomingList = this.portalService.upcomingCitas;
   readonly pastList = this.portalService.pastCitas;
   readonly cancelledList = this.portalService.cancelledCitas;
+
+  constructor() {
+    this.portalService.loadAppointments();
+  }
 
   readonly currentList = computed(() => {
     switch (this.activeTab()) {
@@ -202,7 +208,7 @@ export class AppointmentsComponent {
   });
 
   goToBooking() {
-    this.portalService.setScreen('solicitar');
+    void this.router.navigate(['/reservar']);
   }
 
   openPrep(cita: Cita) {

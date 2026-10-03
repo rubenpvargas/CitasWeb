@@ -1,168 +1,62 @@
-import { Injectable, signal, computed, inject } from '@angular/core';
+import { Injectable, signal, computed, effect, inject, untracked } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { switchMap } from 'rxjs';
-import { Cita, Doctor, PatientUser, ScreenType } from '../models/portal.types';
+import { Cita, Doctor, PatientUser } from '../models/portal.types';
+import { AppConfigService } from '../core/config/app-config.service';
+import { SessionStore } from '../core/auth/session.store';
+import { LEGACY_MOCK_CITAS, LEGACY_MOCK_DOCTORS } from './legacy-mock';
 
-export const HIC_BUILDING_IMG = 'https://lh3.googleusercontent.com/aida-public/AB6AXuDpJ7HSVkmsFGQMu5P-6NsAjYEb81sDHWBXRi3cI9kBvdOEr-DS5vQOCodF4Nje417_2TlRBsxMNB8daSR1v8VopUKk7A3hIe2ZGYKUTVXBzT4-Jp7Wl6RuSNP0dEWvyXeeuisZmQEHlYJ86Is6CoYi0Pwkhs89yLWw7atNzVcZ9Ma36oWmvigeRYScX9FmJYO7Ye82Qs6ABLyLT09ClbmBuFx-3mQ3k8bPxv2R1cKCwriPy1ABG04lWA';
+export { HIC_BUILDING_IMG, HIC_LOGO_IMG, DR_HERRERA_PHOTO } from './legacy-mock';
 
-export const HIC_LOGO_IMG = 'https://lh3.googleusercontent.com/aida/AEtjO1WTrMpLS8jjbEAmi84opFVpxoT3gnhodtawtqPe3Kzp4jz5OpUAZp8SUhfj85MLurnbZKSEYkeULgid_d_iRYbU6bI5m_qOcc_cvWl8YW2dtRaH-M-Qnbvymco2LyMp2ZuyzvUqAgT3s9S0zlK18DzYSxrSM91Pma9LrwoiZbnxz_Jmfg3BoxqMDDlFGuLIhnYBf5izEvDLFoAhf3ck1bQ0YbpNCwVEGyYMjR13KgEnFB9eF2VZA67wpF6p';
-
-export const DR_HERRERA_PHOTO = 'https://lh3.googleusercontent.com/aida-public/AB6AXuDj9KBtCaJ17U8rmSpZUVF9SIrhWw2Imn8kw2UrU-SyHon8B0fosJPm5kyn4RI_FJgM01p8rLTRScq92PbjZimoqDeUQIkoaJdegcYVBEYCXXWFRC0neI3xw7EKzEbCEWsHYqE00lWzPy_5nLDG8I8N1F2BxXF5LWuGJ2zUtGEkYTC7Dk7-s7lXb_8-4kgET0XJ0kqERosI5dHTbBNJUSIH6eI77Cs0q85t2hthhZSo2zfZT2d0ZiHv2g';
-
+/**
+ * Estado de las pantallas de portal (inicio, reserva, citas, perfil). La
+ * navegación vive en el Router y la identidad en `SessionStore`; los datos de
+ * médicos/citas siguen siendo los sintéticos heredados hasta las HU de agenda.
+ */
 @Injectable({
   providedIn: 'root',
 })
 export class PortalService {
   private readonly http = inject(HttpClient);
-  readonly currentScreen = signal<ScreenType>('login');
-  readonly isAuthenticated = signal<boolean>(false);
+  private readonly config = inject(AppConfigService);
+  private readonly session = inject(SessionStore);
   readonly emptyStateSimulated = signal<boolean>(false);
 
-  readonly activePatient = signal<PatientUser>({
-    fullName: 'Ana Martínez Silva',
-    firstName: 'Ana',
-    lastName: 'Martínez Silva',
-    docType: 'CC',
-    docNumber: '1098765432',
-    email: 'paciente@fcv.org',
-    phone: '300 123 4567',
-    avatarUrl: DR_HERRERA_PHOTO,
-  });
-
-  constructor() {
-    this.activePatient.update((patient) => ({
-      ...patient,
-      fullName: '',
-      firstName: '',
-      lastName: '',
+  /** Identidad visible derivada del `user` de la respuesta de login. */
+  readonly activePatient = computed<PatientUser>(() => {
+    const user = this.session.user();
+    return {
+      fullName: user ? `${user.firstName} ${user.lastName}`.trim() : '',
+      firstName: user?.firstName ?? '',
+      lastName: user?.lastName ?? '',
       docType: '',
       docNumber: '',
-      email: '',
+      email: user?.email ?? '',
       phone: '',
       avatarUrl: '',
-    }));
-  }
+    };
+  });
 
-  readonly doctors = signal<Doctor[]>([
-    {
-      id: 'dr-herrera',
-      name: 'Dra. Valentina Herrera',
-      specialty: 'Cardiología Adultos',
-      subspecialty: 'Ecocardiografía e Insuficiencia Cardíaca',
-      sede: 'HIC',
-      room: 'Torre Médica A, Piso 4, Consultorio 410',
-      rating: 4.9,
-      availableDays: ['Lunes', 'Miércoles', 'Jueves', 'Viernes'],
-      photoUrl: DR_HERRERA_PHOTO,
-    },
-    {
-      id: 'dr-silva',
-      name: 'Dr. Roberto Silva Gómez',
-      specialty: 'Cardiología Adultos',
-      subspecialty: 'Cardiología Intervencionista',
-      sede: 'HIC',
-      room: 'Torre Médica A, Piso 4, Consultorio 412',
-      rating: 4.95,
-      availableDays: ['Martes', 'Jueves', 'Sábado'],
-    },
-    {
-      id: 'dr-morales',
-      name: 'Dra. Claudia Morales',
-      specialty: 'Medicina Interna',
-      subspecialty: 'Manejo Crónico y Medicina Preventiva',
-      sede: 'HIC',
-      room: 'Torre Médica B, Piso 3, Consultorio 305',
-      rating: 4.88,
-      availableDays: ['Lunes', 'Martes', 'Miércoles', 'Jueves'],
-    },
-    {
-      id: 'dr-pena',
-      name: 'Dr. Fernando Peña',
-      specialty: 'Oftalmología',
-      subspecialty: 'Retina y Cirugía Refractiva',
-      sede: 'FCV',
-      room: 'Pabellón El Bosque, Consultorio 114',
-      rating: 4.92,
-      availableDays: ['Lunes', 'Miércoles', 'Viernes'],
-    },
-    {
-      id: 'dr-caicedo',
-      name: 'Dr. Andrés Caicedo',
-      specialty: 'Neurología Clínica',
-      subspecialty: 'Neurofisiología y Trastornos del Sueño',
-      sede: 'HIC',
-      room: 'Torre Médica A, Piso 5, Consultorio 502',
-      rating: 4.87,
-      availableDays: ['Martes', 'Jueves'],
-    },
-  ]);
+  readonly doctors = signal<Doctor[]>(LEGACY_MOCK_DOCTORS);
 
-  readonly citas = signal<Cita[]>([
-    {
-      id: 'cita-1',
-      specialty: 'Cardiología Adultos',
-      doctorName: 'Dr. Roberto Silva Gómez',
-      date: 'Jueves, 24 de Octubre, 2024',
-      time: '09:30 AM',
-      arrivalNotice: 'Llegar 20 min antes',
-      modality: 'Presencial',
-      sede: 'Hospital Internacional de Colombia (HIC)',
-      locationDetails: 'Torre Médica A, Piso 4, Consultorio 412 · Piedecuesta',
-      status: 'Confirmada',
-      icon: 'cardiology',
-      preparation: [
-        'Presentar documento de identidad original (Cédula de Ciudadanía).',
-        'Llevar orden médica de autorización vigente emitida por su asegurador o EPS.',
-        'Ayuno ligero de 2 horas previas en caso de pruebas diagnósticas complementarias.',
-        'Llevar lista actualizada de medicamentos que toma habitualmente con dosis.',
-      ],
-    },
-    {
-      id: 'cita-2',
-      specialty: 'Medicina Interna',
-      doctorName: 'Dra. Claudia Morales',
-      date: '12 Sep 2024',
-      time: '11:00 AM',
-      arrivalNotice: 'Atendida en horario',
-      modality: 'Presencial',
-      sede: 'Hospital Internacional de Colombia (HIC)',
-      locationDetails: 'Torre Médica B, Piso 3, Consultorio 305',
-      status: 'Atendida',
-      icon: 'stethoscope',
-      preparation: ['Control semestral completado con satisfacción.'],
-    },
-    {
-      id: 'cita-3',
-      specialty: 'Oftalmología',
-      doctorName: 'Dr. Fernando Peña',
-      date: '18 Jun 2024',
-      time: '03:15 PM',
-      arrivalNotice: 'Atendida en horario',
-      modality: 'Presencial',
-      sede: 'Instituto Cardiovascular FCV',
-      locationDetails: 'Pabellón El Bosque, Consultorio 114 · Floridablanca',
-      status: 'Atendida',
-      icon: 'visibility',
-      preparation: ['Examen de agudeza visual y fondo de ojo finalizado.'],
-    },
-    {
-      id: 'cita-4',
-      specialty: 'Neurología Clínica',
-      doctorName: 'Dr. Andrés Caicedo',
-      date: '15 Feb 2024',
-      time: '10:00 AM',
-      arrivalNotice: 'Atendida en horario',
-      modality: 'Presencial',
-      sede: 'Hospital Internacional de Colombia (HIC)',
-      locationDetails: 'Torre Médica A, Piso 5, Consultorio 502',
-      status: 'Atendida',
-      icon: 'neurology',
-      preparation: ['Revisión neurológica periódica.'],
-    },
-  ]);
+  readonly citas = signal<Cita[]>(LEGACY_MOCK_CITAS);
 
   // Selected appointment for details/preparation modal
   readonly selectedCitaForPrep = signal<Cita | null>(null);
+
+  constructor() {
+    // Al cerrar o expirar la sesión no se conservan datos del usuario anterior (HU-003).
+    effect(() => {
+      if (this.session.isAuthenticated()) return;
+      untracked(() => this.resetUserState());
+    });
+  }
+
+  /** Descarta los datos cargados para el usuario de la sesión. */
+  resetUserState() {
+    this.citas.set(LEGACY_MOCK_CITAS);
+    this.selectedCitaForPrep.set(null);
+    this.emptyStateSimulated.set(false);
+  }
 
   // Computed views
   readonly upcomingCitas = computed(() => {
@@ -183,28 +77,11 @@ export class PortalService {
     return list.length > 0 ? list[0] : null;
   });
 
-  // Action methods
-  setScreen(screen: ScreenType) {
-    this.currentScreen.set(screen);
-    if (screen === 'dashboard' || screen === 'mis-citas') this.loadAppointments();
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  }
-
   loadAppointments() {
-    this.http.get<{ apiUrl: string }>('assets/runtime-config.json').pipe(
-      switchMap(({ apiUrl }) => this.http.get<Record<string, unknown>[]>(`${apiUrl}/api/v1/appointments`)),
-    ).subscribe({
+    this.http.get<Record<string, unknown>[]>(this.config.url('/api/v1/appointments')).subscribe({
       next: (items) => this.citas.set(items.map((item) => this.toCita(item))),
       error: () => undefined,
     });
-  }
-
-  setAuthenticatedPatient(patient: Pick<PatientUser, 'firstName' | 'lastName' | 'email'>) {
-    this.activePatient.update((current) => ({
-      ...current,
-      ...patient,
-      fullName: `${patient.firstName} ${patient.lastName}`.trim(),
-    }));
   }
 
   toggleEmptyState() {
@@ -220,9 +97,7 @@ export class PortalService {
   }
 
   cancelAppointment(id: string) {
-    this.http.get<{ apiUrl: string }>('assets/runtime-config.json').pipe(
-      switchMap(({ apiUrl }) => this.http.post<void>(`${apiUrl}/api/v1/appointments/${id}/cancel`, {})),
-    ).subscribe({
+    this.http.post<void>(this.config.url(`/api/v1/appointments/${id}/cancel`), {}).subscribe({
       next: () => this.citas.update((prev) => prev.map((c) => (c.id === id ? { ...c, status: 'Cancelada' } : c))),
       error: () => undefined,
     });
@@ -242,14 +117,12 @@ export class PortalService {
     start.setDate(start.getDate() + 1);
     start.setHours(8, 0, 0, 0);
     const startAt = start.toISOString().slice(0, 19);
-    return this.http.get<{ apiUrl: string }>('assets/runtime-config.json').pipe(
-      switchMap(({ apiUrl }) => this.http.post<Record<string, unknown>>(`${apiUrl}/api/v1/appointments/general`, {
-        professionalId: 9001,
-        locationCode: 'HIC',
-        startAt,
-        reason: 'Solicitud sintética desde el portal',
-      })),
-    );
+    return this.http.post<Record<string, unknown>>(this.config.url('/api/v1/appointments/general'), {
+      professionalId: 9001,
+      locationCode: 'HIC',
+      startAt,
+      reason: 'Solicitud sintética desde el portal',
+    });
   }
 
   private toCita(item: Record<string, unknown>): Cita {
