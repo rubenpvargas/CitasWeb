@@ -1,0 +1,4 @@
+#!/bin/sh
+# Ejecuta lint y pruebas antes de publicar.
+echo "pre-push: npm run lint && ng test" >&2
+npm run lint --silent && npx ng test --watch=false || { echo "pre-push: verificación en rojo, push cancelado." >&2; exit 1; }
