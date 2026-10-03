@@ -112,6 +112,13 @@ export const routes: Routes = [
         loadComponent: () => import('./components/operations/professionals/professionals-admin').then((m) => m.ProfessionalsAdminComponent),
       },
       {
+        path: 'bloques',
+        title: 'Disponibilidad | Operación | Portal de Citas HIC | FCV',
+        canActivate: [roleGuard],
+        data: { roles: PROFESSIONAL_ONLY },
+        loadComponent: () => import('./components/operations/blocks/blocks').then((m) => m.BlocksComponent),
+      },
+      {
         path: 'agenda',
         title: 'Agenda | Operación | Portal de Citas HIC | FCV',
         canActivate: [roleGuard],
