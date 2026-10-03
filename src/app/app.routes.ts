@@ -91,6 +91,13 @@ export const routes: Routes = [
         loadComponent: () => import('./components/operations/inbox/inbox').then((m) => m.InboxComponent),
       },
       {
+        path: 'eps',
+        title: 'EPS y planes | Operación | Portal de Citas HIC | FCV',
+        canActivate: [roleGuard],
+        data: { roles: ADMIN_ONLY },
+        loadComponent: () => import('./components/operations/eps/eps-admin').then((m) => m.EpsAdminComponent),
+      },
+      {
         path: 'agenda',
         title: 'Agenda | Operación | Portal de Citas HIC | FCV',
         canActivate: [roleGuard],

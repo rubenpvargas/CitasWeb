@@ -21,3 +21,21 @@ export function loginResponse(roles: string[] = ['USER'], suffix = '1'): LoginRe
     user: { id: 7, firstName: 'Paciente', lastName: 'Sintético', email: 'paciente@example.test', roles },
   };
 }
+
+/** `GET /api/v1/catalogs` sintético (sin `id` en regímenes, como el contrato actual). */
+export function catalogsFixture() {
+  return {
+    roles: [],
+    appointmentStatuses: [],
+    rescheduleRequestStatuses: [],
+    insuranceRegimes: [
+      { code: 'CONTRIBUTIVO', name: 'Contributivo' },
+      { code: 'SUBSIDIADO', name: 'Subsidiado' },
+    ],
+    locations: [
+      { code: 'HIC', name: 'Hospital Internacional de Colombia', address: 'Sintética 1', city: 'Piedecuesta', department: 'Santander', active: true },
+      { code: 'ICV', name: 'Instituto Cardiovascular', address: 'Sintética 2', city: 'Floridablanca', department: 'Santander', active: true },
+      { code: 'OLD', name: 'Sede inactiva', address: 'x', city: 'x', department: 'x', active: false },
+    ],
+  };
+}
