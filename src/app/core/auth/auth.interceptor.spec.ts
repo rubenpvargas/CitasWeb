@@ -1,8 +1,8 @@
 import { TestBed } from '@angular/core/testing';
-import { HttpClient, provideHttpClient, withInterceptors } from '@angular/common/http';
+import { HttpClient, HttpContext, provideHttpClient, withInterceptors } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { Router, provideRouter } from '@angular/router';
-import { authInterceptor, isPublicAuthEndpoint } from './auth.interceptor';
+import { HANDLE_FORBIDDEN_LOCALLY, authInterceptor, isPublicAuthEndpoint } from './auth.interceptor';
 import { SessionStore } from './session.store';
 import { AppConfigService } from '../config/app-config.service';
 import { TEST_API_URL, loginResponse, tokenResponse } from '../../testing/fixtures';
@@ -141,5 +141,25 @@ describe('authInterceptor', () => {
     expect(status).toBe(403);
     expect(router.navigate).toHaveBeenCalledWith(['/no-autorizado'], { skipLocationChange: true });
     expect(session.isAuthenticated()).toBe(true);
+  });
+
+  it('403 en una mutación no redirige: la pantalla muestra su mensaje', () => {
+    session.start(loginResponse());
+    for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) {
+      let status = 0;
+      client.request(method, ME, { body: {} }).subscribe({ error: (e) => (status = e.status) });
+      http.expectOne({ method, url: ME }).flush({ code: 'FORBIDDEN' }, { status: 403, statusText: 'Forbidden' });
+      expect(status).toBe(403);
+    }
+    expect(router.navigate).not.toHaveBeenCalled();
+  });
+
+  it('403 en un GET con HANDLE_FORBIDDEN_LOCALLY no redirige', () => {
+    session.start(loginResponse());
+    let status = 0;
+    client.get(ME, { context: new HttpContext().set(HANDLE_FORBIDDEN_LOCALLY, true) }).subscribe({ error: (e) => (status = e.status) });
+    http.expectOne(ME).flush({ code: 'FORBIDDEN' }, { status: 403, statusText: 'Forbidden' });
+    expect(status).toBe(403);
+    expect(router.navigate).not.toHaveBeenCalled();
   });
 });
