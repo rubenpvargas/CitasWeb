@@ -1,18 +1,23 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
-import { ProfessionalApi, AgendaItemDto } from '../../../core/api/professional.api';
+import { A11yModule } from '@angular/cdk/a11y';
+import { ProfessionalApi, AgendaItemDto, CloseOutcome } from '../../../core/api/professional.api';
 import { CatalogApi, CatalogLocationDto } from '../../../core/api/catalog.api';
-import { errorMessage } from '../../../core/api/api-errors';
+import { errorCode, errorMessage } from '../../../core/api/api-errors';
 import { MAX_RANGE_DAYS, addDays, dateOf, daysBetween, formatLongDate, timeOf, todayInBogota } from '../../../core/time/bogota-time';
 
 export type AgendaPreset = 'day' | 'week' | 'custom';
 
+export const OUTCOME_LABELS: Record<CloseOutcome, string> = { COMPLETED: 'Atendida', NO_SHOW: 'No asistió' };
+
 /**
  * HU-023: agenda propia del profesional (`GET /professional/agenda`). Solo
  * citas APROBADAS devueltas por el backend y solo el nombre del paciente.
+ * HU-024: cierre COMPLETED/NO_SHOW solo cuando el backend marca `closable`.
  */
 @Component({
   selector: 'app-professional-agenda',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [A11yModule],
   template: `
     <section class="ui-card flex flex-col gap-3" aria-labelledby="agenda-title">
       <h2 id="agenda-title" class="ui-section-title">Mi agenda de citas aprobadas</h2>
@@ -68,7 +73,19 @@ export type AgendaPreset = 'day' | 'week' | 'custom';
                     </div>
                     <span class="ui-badge bg-emerald-50 text-emerald-800">Confirmada</span>
                   </div>
-                  <!-- agenda-actions -->
+                  @if (item.closable) {
+                    <div class="flex gap-2" role="group" [attr.aria-label]="'Cerrar atención de ' + item.patientName">
+                      <button type="button" class="ui-btn-ghost border border-outline-variant/40" [attr.data-testid]="'close-completed-' + item.id"
+                        (click)="askClose(item, 'COMPLETED')">Marcar atendida</button>
+                      <button type="button" class="ui-btn-ghost border border-outline-variant/40 text-error" [attr.data-testid]="'close-noshow-' + item.id"
+                        (click)="askClose(item, 'NO_SHOW')">Marcar no asistió</button>
+                    </div>
+                  } @else {
+                    <p class="text-[11px] text-on-surface-variant flex items-center gap-1" [attr.data-testid]="'not-closable-' + item.id">
+                      <span class="material-symbols-outlined text-[14px]" aria-hidden="true">lock_clock</span>
+                      El cierre estará disponible cuando inicie la cita.
+                    </p>
+                  }
                 </li>
               }
             </ul>
@@ -78,6 +95,26 @@ export type AgendaPreset = 'day' | 'week' | 'custom';
         }
       }
     </section>
+
+    @if (closeTarget(); as target) {
+      <div class="fixed inset-0 z-50 bg-[#283044]/60 backdrop-blur-xs flex items-center justify-center p-4">
+        <div role="alertdialog" aria-modal="true" aria-labelledby="close-title" aria-describedby="close-desc" data-testid="close-dialog"
+          cdkTrapFocus [cdkTrapFocusAutoCapture]="true" (keydown.escape)="dismissClose()"
+          class="w-full max-w-sm bg-surface-container-lowest rounded-2xl p-6 shadow-xl flex flex-col gap-3 border border-outline-variant/40">
+          <h2 id="close-title" class="text-lg font-semibold text-primary m-0">¿Cerrar como "{{ outcomeLabel(target.outcome) }}"?</h2>
+          <p id="close-desc" class="text-[13px] text-on-surface-variant">
+            {{ target.item.patientName }} · {{ time(target.item.startAt) }} · {{ target.item.specialtyName }}. Esta acción no se puede deshacer.
+          </p>
+          @if (closeError()) { <p class="ui-alert-error" role="alert" data-testid="close-error">{{ closeError() }}</p> }
+          <div class="flex gap-2">
+            <button type="button" class="ui-btn-secondary flex-1" (click)="dismissClose()" [disabled]="closing()">Volver</button>
+            <button type="button" class="ui-btn-primary flex-1" data-testid="close-confirm" (click)="confirmClose()" [disabled]="closing()">
+              {{ closing() ? 'Guardando...' : 'Confirmar' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    }
   `,
 })
 export class AgendaComponent {
@@ -105,6 +142,10 @@ export class AgendaComponent {
     return Array.from(byDate, ([date, items]) => ({ date, items }));
   });
 
+  readonly closeTarget = signal<{ item: AgendaItemDto; outcome: CloseOutcome } | null>(null);
+  readonly closing = signal(false);
+  readonly closeError = signal<string | null>(null);
+
   constructor() {
     this.catalogs.getCatalogs().subscribe({ next: (c) => this.locations.set(c.locations), error: () => undefined });
     this.load();
@@ -116,6 +157,40 @@ export class AgendaComponent {
 
   time(value: string): string {
     return timeOf(value);
+  }
+
+  outcomeLabel(outcome: CloseOutcome): string {
+    return OUTCOME_LABELS[outcome];
+  }
+
+  askClose(item: AgendaItemDto, outcome: CloseOutcome) {
+    this.message.set('');
+    this.closeError.set(null);
+    this.closeTarget.set({ item, outcome });
+  }
+
+  dismissClose() {
+    if (!this.closing()) this.closeTarget.set(null);
+  }
+
+  confirmClose() {
+    const target = this.closeTarget();
+    if (!target || this.closing()) return;
+    this.closing.set(true);
+    this.closeError.set(null);
+    this.api.closeAppointment(target.item.id, target.outcome).subscribe({
+      next: () => {
+        this.closing.set(false);
+        this.closeTarget.set(null);
+        this.message.set(`Atención de ${target.item.patientName} cerrada como "${OUTCOME_LABELS[target.outcome]}".`);
+        this.load();
+      },
+      error: (e: unknown) => {
+        this.closing.set(false);
+        this.closeError.set(errorMessage(e, 'No fue posible cerrar la atención.'));
+        if (['INVALID_TRANSITION', 'NOT_FOUND'].includes(errorCode(e))) this.load();
+      },
+    });
   }
 
   applyPreset(preset: AgendaPreset) {
