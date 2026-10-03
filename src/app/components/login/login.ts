@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
-import { HIC_BUILDING_IMG } from '../../services/portal.service';
+import { HIC_BUILDING_IMG } from '../../services/brand-assets';
 import { AuthService } from '../../core/auth/auth.service';
 import { errorCode, errorMessage } from '../../core/api/api-errors';
 import { LOGIN_NOTICES, isLoginNotice } from '../../core/auth/login-notice';

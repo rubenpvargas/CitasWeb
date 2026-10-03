@@ -57,6 +57,5 @@ El origen del frontend debe estar permitido en la configuración CORS de
   ante `401` y, si la renovación falla, vuelve a `/login`. Los guards y el menú
   por rol son solo experiencia de usuario: la autorización final es del backend.
 
-Las pantallas de inicio, reserva, citas, perfil y operación aún muestran parte
-de los datos sintéticos del prototipo (`src/app/services/legacy-mock.ts`) hasta
-que se implementen sus historias de usuario.
+Todas las pantallas (inicio, reserva, mis citas, perfil y operación ADMIN /
+PROFESSIONAL) consumen la API real; no quedan datos simulados en el bundle.

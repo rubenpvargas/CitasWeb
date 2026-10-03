@@ -1,6 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
-import { PortalService } from '../../services/portal.service';
 import { ActiveSpecialtyDto, CatalogApi, CatalogLocationDto } from '../../core/api/catalog.api';
 import { AppointmentDto, AvailabilityApi, AvailabilitySlotDto } from '../../core/api/availability.api';
 import { errorCode, errorMessage } from '../../core/api/api-errors';
@@ -340,7 +339,6 @@ export function slotKey(slot: AvailabilitySlotDto): string {
   `,
 })
 export class BookingComponent {
-  private readonly portalService = inject(PortalService);
   private readonly router = inject(Router);
   private readonly catalogs = inject(CatalogApi);
   protected readonly availability = inject(AvailabilityApi);
@@ -537,7 +535,6 @@ export class BookingComponent {
       next: (appointment) => {
         this.bookingLoading.set(false);
         this.booked.set(appointment);
-        this.portalService.loadAppointments();
       },
       error: (e: unknown) => {
         this.bookingLoading.set(false);

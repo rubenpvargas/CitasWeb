@@ -5,7 +5,6 @@ import { Router, provideRouter } from '@angular/router';
 import { ProfileComponent } from './profile';
 import { AppConfigService } from '../../core/config/app-config.service';
 import { SessionStore } from '../../core/auth/session.store';
-import { PortalService } from '../../services/portal.service';
 import { ProfileDto } from '../../core/api/profile.api';
 import { TEST_API_URL, loginResponse } from '../../testing/fixtures';
 
@@ -173,17 +172,12 @@ describe('ProfileComponent', () => {
       expect(router.navigate).toHaveBeenCalledWith(['/login']);
     });
 
-    it('no conserva datos del usuario anterior tras cerrar sesión', async () => {
-      const portal = TestBed.inject(PortalService);
-      portal.citas.set([]);
-      portal.emptyStateSimulated.set(true);
+    it('no conserva la identidad del usuario anterior tras cerrar sesión', async () => {
       button().click();
       http.expectOne(LOGOUT_URL).flush(null, { status: 204, statusText: 'No Content' });
       await fixture.whenStable();
-      TestBed.tick();
-      expect(portal.citas().length).toBeGreaterThan(0);
-      expect(portal.emptyStateSimulated()).toBe(false);
-      expect(portal.activePatient().fullName).toBe('');
+      expect(session.user()).toBeNull();
+      expect(sessionStorage.length).toBe(0);
     });
   });
 });
