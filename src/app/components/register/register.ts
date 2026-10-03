@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, inject, signal, computed } from '@angular/core';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
-import { PortalService } from '../../services/portal.service';
-import { AuthService } from '../../services/auth.service';
+import { AuthService } from '../../core/auth/auth.service';
+import { Router } from '@angular/router';
 
 @Component({
   selector: 'app-register',
@@ -289,7 +289,7 @@ import { AuthService } from '../../services/auth.service';
   `
 })
 export class RegisterComponent {
-  private readonly portalService = inject(PortalService);
+  private readonly router = inject(Router);
   private readonly authService = inject(AuthService);
   private readonly fb = inject(FormBuilder);
 
@@ -360,24 +360,9 @@ export class RegisterComponent {
         this.loading.set(false);
         this.showSuccessBanner.set(true);
 
-        this.portalService.activePatient.set({
-          fullName: `${user.firstName} ${user.lastName}`,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          docType: user.documentType,
-          docNumber: user.documentNumber,
-          email: user.email,
-          phone: user.phone,
-          avatarUrl: this.portalService.activePatient().avatarUrl,
-        });
-
         this.authService.login(user.email, form.password ?? '').subscribe({
-          next: (authenticated) => {
-            this.portalService.setAuthenticatedPatient(authenticated);
-            this.portalService.isAuthenticated.set(true);
-            this.portalService.setScreen('dashboard');
-          },
-          error: () => this.portalService.setScreen('login'),
+          next: () => void this.router.navigate(['/']),
+          error: () => void this.router.navigate(['/login']),
         });
       },
       error: (error) => {
@@ -390,6 +375,6 @@ export class RegisterComponent {
   }
 
   goToLogin() {
-    this.portalService.setScreen('login');
+    void this.router.navigate(['/login']);
   }
 }

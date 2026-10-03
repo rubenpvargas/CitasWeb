@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, inject, signal, computed } from '@angular/core';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
-import { PortalService } from '../../services/portal.service';
-import { AuthService } from '../../services/auth.service';
+import { AuthService } from '../../core/auth/auth.service';
+import { Router } from '@angular/router';
 
 @Component({
   selector: 'app-reset-password',
@@ -257,7 +257,7 @@ import { AuthService } from '../../services/auth.service';
   `
 })
 export class ResetPasswordComponent {
-  private readonly portalService = inject(PortalService);
+  private readonly router = inject(Router);
   private readonly fb = inject(FormBuilder);
   private readonly authService = inject(AuthService);
 
@@ -382,10 +382,10 @@ export class ResetPasswordComponent {
 
   goToLogin() {
     this.showSuccessModal.set(false);
-    this.portalService.setScreen('login');
+    void this.router.navigate(['/login']);
   }
 
   goToRecover() {
-    this.portalService.setScreen('recuperar');
+    void this.router.navigate(['/recuperar']);
   }
 }

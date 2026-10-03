@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, inject, signal, OnDestroy } from '@angular/core';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
-import { PortalService } from '../../services/portal.service';
-import { AuthService } from '../../services/auth.service';
+import { AuthService } from '../../core/auth/auth.service';
+import { Router } from '@angular/router';
 
 @Component({
   selector: 'app-forgot-password',
@@ -170,7 +170,7 @@ import { AuthService } from '../../services/auth.service';
   `
 })
 export class ForgotPasswordComponent implements OnDestroy {
-  private readonly portalService = inject(PortalService);
+  private readonly router = inject(Router);
   private readonly fb = inject(FormBuilder);
   private readonly authService = inject(AuthService);
 
@@ -230,11 +230,11 @@ export class ForgotPasswordComponent implements OnDestroy {
   }
 
   goToLogin() {
-    this.portalService.setScreen('login');
+    void this.router.navigate(['/login']);
   }
 
   goToResetPassword() {
-    this.portalService.setScreen('reset-password');
+    void this.router.navigate(['/restablecer']);
   }
 
   ngOnDestroy() {

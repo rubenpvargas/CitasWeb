@@ -1,9 +1,9 @@
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
-import { switchMap } from 'rxjs';
-import { AuthService } from '../../services/auth.service';
-import { PortalService } from '../../services/portal.service';
+import { Router } from '@angular/router';
+import { AppConfigService } from '../../core/config/app-config.service';
+import { SessionStore } from '../../core/auth/session.store';
 
 @Component({
   selector: 'app-operations',
@@ -13,7 +13,7 @@ import { PortalService } from '../../services/portal.service';
     <main class="min-h-screen max-w-5xl mx-auto w-full p-5 pb-24 flex flex-col gap-5">
       <header class="flex flex-wrap items-center justify-between gap-3">
         <div><p class="text-xs uppercase tracking-widest text-secondary font-semibold">Operación protegida</p><h1 class="text-2xl font-semibold text-primary">Agenda y administración</h1></div>
-        <button type="button" (click)="back()" class="px-3 py-2 rounded-lg bg-surface-container text-primary border-0 cursor-pointer">Volver al portal</button>
+        @if (canUsePortal()) { <button type="button" (click)="back()" class="px-3 py-2 rounded-lg bg-surface-container text-primary border-0 cursor-pointer">Volver al portal</button> }
       </header>
       @if (!isAdmin() && !isProfessional()) { <div role="alert" class="p-4 rounded-xl bg-error-container text-error">Tu rol no tiene permisos para esta consola. La API mantiene la autorización final.</div> }
       @if (isAdmin()) {
@@ -49,8 +49,9 @@ import { PortalService } from '../../services/portal.service';
 })
 export class OperationsComponent {
   private readonly http = inject(HttpClient);
-  private readonly auth = inject(AuthService);
-  private readonly portal = inject(PortalService);
+  private readonly session = inject(SessionStore);
+  private readonly config = inject(AppConfigService);
+  private readonly router = inject(Router);
   private readonly fb = inject(FormBuilder);
   readonly inbox = signal<Record<string, unknown>[]>([]);
   readonly professionals = signal<Record<string, unknown>[]>([]);
@@ -58,10 +59,11 @@ export class OperationsComponent {
   readonly message = signal('');
   readonly saving = signal(false);
   readonly blockForm = this.fb.nonNullable.group({ date: ['', Validators.required], startTime: ['08:00', Validators.required], endTime: ['12:00', Validators.required], locationCode: ['HIC', Validators.required] });
-  readonly isAdmin = () => this.auth.currentUser()?.roles.includes('ADMIN') ?? false;
-  readonly isProfessional = () => this.auth.currentUser()?.roles.includes('PROFESSIONAL') ?? false;
+  readonly isAdmin = () => this.session.hasAnyRole(['ADMIN']);
+  readonly isProfessional = () => this.session.hasAnyRole(['PROFESSIONAL']);
   private api<T>(method: 'get' | 'post', path: string, body?: unknown) {
-    return this.http.get<{ apiUrl: string }>('assets/runtime-config.json').pipe(switchMap(({ apiUrl }) => method === 'get' ? this.http.get<T>(`${apiUrl}${path}`) : this.http.post<T>(`${apiUrl}${path}`, body ?? {})));
+    const url = this.config.url(path);
+    return method === 'get' ? this.http.get<T>(url) : this.http.post<T>(url, body ?? {});
   }
   loadInbox() { this.api<Record<string, unknown>[]>('get', '/api/v1/admin/inbox').subscribe({ next: (data) => this.inbox.set(data), error: () => this.message.set('No fue posible cargar la bandeja.') }); }
   loadProfessionals() { this.api<Record<string, unknown>[]>('get', '/api/v1/admin/professionals').subscribe({ next: (data) => this.professionals.set(data), error: () => this.message.set('No fue posible cargar profesionales.') }); }
@@ -69,5 +71,6 @@ export class OperationsComponent {
   decide(item: Record<string, unknown>, approve: boolean) { const path = item['itemType'] === 'RESCHEDULE' ? `/api/v1/admin/reschedules/${item['id']}/decision` : `/api/v1/admin/appointments/${item['id']}/decision`; this.api<void>('post', path, { approve, reason: approve ? 'Decision operativa sintetica' : 'No cumple criterios de laboratorio' }).subscribe({ next: () => { this.message.set('Decisión guardada.'); this.loadInbox(); }, error: () => this.message.set('La API rechazó la decisión.') }); }
   createBlock() { if (this.blockForm.invalid) return; this.saving.set(true); this.api<Record<string, unknown>>('post', '/api/v1/professional/blocks', this.blockForm.getRawValue()).subscribe({ next: () => this.message.set('Bloque publicado.'), error: () => this.message.set('No fue posible publicar el bloque.'), complete: () => this.saving.set(false) }); }
   loadAgenda() { const today = new Date(); const from = today.toISOString().slice(0, 10); const toDate = new Date(today); toDate.setDate(toDate.getDate() + 30); const to = toDate.toISOString().slice(0, 10); this.api<Record<string, unknown>[]>('get', `/api/v1/professional/agenda?from=${from}&to=${to}`).subscribe({ next: (data) => this.agenda.set(data), error: () => this.message.set('No fue posible cargar agenda.') }); }
-  back() { this.portal.setScreen('dashboard'); }
+  readonly canUsePortal = () => this.session.hasAnyRole(['USER']);
+  back() { void this.router.navigate(['/inicio']); }
 }

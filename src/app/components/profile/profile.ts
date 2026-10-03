@@ -1,6 +1,7 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { Router } from '@angular/router';
 import { PortalService } from '../../services/portal.service';
-import { AuthService } from '../../services/auth.service';
+import { AuthService } from '../../core/auth/auth.service';
 
 @Component({
   selector: 'app-profile',
@@ -20,6 +21,7 @@ import { AuthService } from '../../services/auth.service';
         <button
           type="button"
           (click)="logout()"
+          [disabled]="loggingOut()"
           class="text-[12px] font-semibold text-error hover:bg-error-container/40 px-2.5 py-1 rounded-lg transition-colors cursor-pointer border-0 bg-transparent"
         >
           Cerrar sesión
@@ -127,6 +129,7 @@ import { AuthService } from '../../services/auth.service';
         <button
           type="button"
           (click)="logout()"
+          [disabled]="loggingOut()"
           class="w-full h-11 rounded-xl bg-surface-container-lowest border border-error/40 text-error text-[13px] font-semibold flex items-center justify-center gap-2 hover:bg-error-container/30 transition-colors cursor-pointer"
         >
           <span class="material-symbols-outlined text-[18px]">logout</span>
@@ -140,19 +143,27 @@ import { AuthService } from '../../services/auth.service';
 export class ProfileComponent {
   private readonly portalService = inject(PortalService);
   private readonly authService = inject(AuthService);
+  private readonly router = inject(Router);
   readonly patient = this.portalService.activePatient;
+  readonly loggingOut = signal(false);
 
   goToResetPassword() {
-    this.portalService.setScreen('reset-password');
+    // Sin token de recuperación, el cambio de contraseña inicia en /recuperar (HU-004).
+    void this.router.navigate(['/recuperar']);
   }
 
   goToRecover() {
-    this.portalService.setScreen('recuperar');
+    void this.router.navigate(['/recuperar']);
   }
 
   logout() {
-    this.authService.logout();
-    this.portalService.isAuthenticated.set(false);
-    this.portalService.setScreen('login');
+    if (this.loggingOut()) return;
+    this.loggingOut.set(true);
+    this.authService.logout().subscribe({
+      complete: () => {
+        this.loggingOut.set(false);
+        void this.router.navigate(['/login']);
+      },
+    });
   }
 }

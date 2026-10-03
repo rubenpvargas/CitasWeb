@@ -1,7 +1,8 @@
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
-import { PortalService, HIC_BUILDING_IMG } from '../../services/portal.service';
-import { AuthService } from '../../services/auth.service';
+import { HIC_BUILDING_IMG } from '../../services/portal.service';
+import { AuthService } from '../../core/auth/auth.service';
+import { Router } from '@angular/router';
 
 @Component({
   selector: 'app-login',
@@ -215,7 +216,7 @@ import { AuthService } from '../../services/auth.service';
   `
 })
 export class LoginComponent {
-  private readonly portalService = inject(PortalService);
+  private readonly router = inject(Router);
   private readonly authService = inject(AuthService);
   private readonly fb = inject(FormBuilder);
 
@@ -253,9 +254,8 @@ export class LoginComponent {
     this.authService.login(email, password).subscribe({
       next: (user) => {
         this.loading.set(false);
-        this.portalService.setAuthenticatedPatient(user);
-        this.portalService.isAuthenticated.set(true);
-        this.portalService.setScreen('dashboard');
+        void user;
+        void this.router.navigate(['/']);
       },
       error: () => {
         this.loading.set(false);
@@ -273,7 +273,7 @@ export class LoginComponent {
       const email = this.loginForm.value.email?.trim().toLowerCase();
       // Valid credentials or demo
       if (email === 'paciente@fcv.org' || email === 'ana.martinez@ejemplo.com' || (email && email.includes('@'))) {
-        this.portalService.setScreen('dashboard');
+        void this.router.navigate(['/']);
       } else {
         this.alertMessage.set('Correo electrónico o contraseña incorrectos. Por favor verifica tus datos.');
         this.showAlert.set(true);
@@ -286,10 +286,10 @@ export class LoginComponent {
   }
 
   goToRecover() {
-    this.portalService.setScreen('recuperar');
+    void this.router.navigate(['/recuperar']);
   }
 
   goToRegister() {
-    this.portalService.setScreen('registro');
+    void this.router.navigate(['/registro']);
   }
 }
