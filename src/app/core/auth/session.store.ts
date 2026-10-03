@@ -108,6 +108,13 @@ export class SessionStore implements OnDestroy {
     });
   }
 
+  /** Refleja en la sesión cambios de perfil (p. ej. nombre tras `PATCH /me`). */
+  updateUser(changes: Partial<Pick<AuthenticatedUser, 'firstName' | 'lastName'>>): void {
+    const current = this.state();
+    if (!current) return;
+    this.write({ ...current, user: { ...current.user, ...changes } });
+  }
+
   clear(): void {
     this.cancelExpiryTimer();
     this.state.set(null);

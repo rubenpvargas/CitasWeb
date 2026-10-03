@@ -90,3 +90,53 @@
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+/*
+ * Clases de composición derivadas de los estilos del diseño aprobado
+ * (tarjetas, campos, botones y alertas de login/registro/perfil). Solo
+ * agrupan utilidades ya usadas; no introducen tokens nuevos.
+ */
+@layer components {
+  .ui-card {
+    @apply bg-surface-container-lowest rounded-2xl p-5 shadow-xs border border-outline-variant/40;
+  }
+  .ui-section-title {
+    @apply text-[13px] font-bold text-primary uppercase tracking-wide;
+  }
+  .ui-label {
+    @apply text-[13px] font-semibold text-on-surface;
+  }
+  .ui-input {
+    @apply w-full h-11 px-3.5 rounded-lg bg-surface-container-lowest text-on-surface text-[14px] border border-outline-variant/60 outline-none transition-all placeholder:text-outline focus:border-secondary focus:ring-2 focus:ring-secondary/20 disabled:bg-surface-container-low disabled:text-on-surface-variant;
+  }
+  .ui-input[aria-invalid='true'] {
+    @apply border-error;
+  }
+  .ui-field-error {
+    @apply text-[11px] text-error;
+  }
+  .ui-btn-primary {
+    @apply h-11 px-4 rounded-lg bg-primary-container text-white text-[14px] font-semibold hover:bg-primary shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer border-0 disabled:opacity-60 disabled:cursor-not-allowed;
+  }
+  .ui-btn-secondary {
+    @apply h-11 px-4 rounded-lg bg-surface-container text-primary text-[14px] font-semibold hover:bg-surface-container-high transition-colors flex items-center justify-center gap-2 cursor-pointer border-0 disabled:opacity-60 disabled:cursor-not-allowed;
+  }
+  .ui-btn-ghost {
+    @apply px-2.5 py-1 rounded-lg text-[12px] font-semibold text-secondary hover:bg-surface-container transition-colors cursor-pointer border-0 bg-transparent disabled:opacity-60 disabled:cursor-not-allowed;
+  }
+  .ui-alert-error {
+    @apply flex items-start gap-2.5 p-3.5 rounded-xl bg-error-container text-on-error-container border border-[#fecdd3] text-[13px];
+  }
+  .ui-alert-success {
+    @apply flex items-start gap-2.5 p-3.5 rounded-xl bg-secondary-container/20 border border-secondary-container/50 text-on-surface text-[13px];
+  }
+  .ui-empty {
+    @apply p-4 rounded-xl bg-surface-container-low border border-outline-variant/30 text-[13px] text-on-surface-variant text-center;
+  }
+  .ui-row {
+    @apply flex items-center gap-3 p-3 rounded-xl bg-surface-container-low border border-outline-variant/20;
+  }
+  .ui-badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold;
+  }
+}
