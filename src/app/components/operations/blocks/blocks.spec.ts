@@ -10,7 +10,7 @@ import { TEST_API_URL, catalogsFixture } from '../../../testing/fixtures';
 const P = `${TEST_API_URL}/api/v1/professional`;
 
 /** Responde las peticiones de calendario (si las hay) para aislar cada HU. */
-export function flushCalendar(http: HttpTestingController, blocks: object[] = []) {
+function flushCalendar(http: HttpTestingController, blocks: object[] = []) {
   http.match((r) => r.url === `${P}/calendar`).forEach((r) => r.flush(blocks));
 }
 

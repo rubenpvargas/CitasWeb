@@ -1,4 +1,5 @@
 import { LoginResponse, TokenResponse } from '../core/api/api.types';
+import { CalendarBlockDto } from '../core/api/professional.api';
 
 /** Fixtures sintéticos para pruebas. No contienen datos reales. */
 export const TEST_API_URL = 'http://api.test';
@@ -39,3 +40,10 @@ export function catalogsFixture() {
     ],
   };
 }
+
+/** Bloques sintéticos del calendario profesional (HU-013/014). */
+export const BLOCKS: CalendarBlockDto[] = [
+  { id: 2, date: '2099-01-16', startTime: '14:00', endTime: '16:00', locationCode: 'ICV', locationName: 'Instituto Cardiovascular', totalSlots: 4, committedSlots: 1, editable: false },
+  { id: 1, date: '2099-01-15', startTime: '08:00', endTime: '10:00', locationCode: 'HIC', locationName: 'Hospital Internacional', totalSlots: 4, committedSlots: 0, editable: true },
+  { id: 3, date: '2020-01-10', startTime: '08:00', endTime: '09:00', locationCode: 'HIC', locationName: 'Hospital Internacional', totalSlots: 2, committedSlots: 0, editable: false },
+];

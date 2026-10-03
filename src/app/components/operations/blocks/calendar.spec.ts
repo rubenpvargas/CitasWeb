@@ -4,16 +4,10 @@ import { HttpTestingController, TestRequest, provideHttpClientTesting } from '@a
 import { provideRouter } from '@angular/router';
 import { BlocksComponent, lockReason } from './blocks';
 import { AppConfigService } from '../../../core/config/app-config.service';
-import { CalendarBlockDto } from '../../../core/api/professional.api';
-import { TEST_API_URL, catalogsFixture } from '../../../testing/fixtures';
+import { BLOCKS, TEST_API_URL, catalogsFixture } from '../../../testing/fixtures';
 
 const CAL = `${TEST_API_URL}/api/v1/professional/calendar`;
 
-export const BLOCKS: CalendarBlockDto[] = [
-  { id: 2, date: '2099-01-16', startTime: '14:00', endTime: '16:00', locationCode: 'ICV', locationName: 'Instituto Cardiovascular', totalSlots: 4, committedSlots: 1, editable: false },
-  { id: 1, date: '2099-01-15', startTime: '08:00', endTime: '10:00', locationCode: 'HIC', locationName: 'Hospital Internacional', totalSlots: 4, committedSlots: 0, editable: true },
-  { id: 3, date: '2020-01-10', startTime: '08:00', endTime: '09:00', locationCode: 'HIC', locationName: 'Hospital Internacional', totalSlots: 2, committedSlots: 0, editable: false },
-];
 
 describe('lockReason (HU-014)', () => {
   it('editable → sin motivo', () => expect(lockReason(BLOCKS[1], '2026-10-02T10:00')).toBeNull());

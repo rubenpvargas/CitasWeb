@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 import { BlockFormComponent } from './block-form';
 import { BlockRequest, CalendarBlockDto, ProfessionalApi } from '../../../core/api/professional.api';
 import { CatalogApi, CatalogLocationDto } from '../../../core/api/catalog.api';
-import { errorMessage } from '../../../core/api/api-errors';
+import { errorCode, errorMessage } from '../../../core/api/api-errors';
 import { MAX_RANGE_DAYS, addDays, daysBetween, formatLongDate, hhmm, nowInBogota, todayInBogota } from '../../../core/time/bogota-time';
 
 export interface CalendarDay {
@@ -18,7 +18,10 @@ export function lockReason(block: CalendarBlockDto, now: string = nowInBogota())
   return 'El servidor no permite modificar este bloque.';
 }
 
-/** Disponibilidad del profesional: publicar bloques (HU-012) y calendario propio (HU-014). */
+/**
+ * Disponibilidad del profesional: publicar bloques (HU-012), editar/eliminar
+ * bloques editables (HU-013) y calendario propio (HU-014).
+ */
 @Component({
   selector: 'app-professional-blocks',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -66,6 +69,7 @@ export function lockReason(block: CalendarBlockDto, now: string = nowInBogota())
 
         <div role="status" aria-live="polite">
           @if (calendarLoading()) { <p class="ui-empty">Cargando calendario...</p> }
+          @if (rowMessage()) { <p class="ui-alert-success" data-testid="block-row-message">{{ rowMessage() }}</p> }
         </div>
         <div role="alert" aria-live="assertive" aria-atomic="true">
           @if (calendarError()) { <p class="ui-alert-error" data-testid="calendar-error">{{ calendarError() }}</p> }
@@ -92,6 +96,28 @@ export function lockReason(block: CalendarBlockDto, now: string = nowInBogota())
                       <p class="text-[12px] text-on-surface-variant flex items-center gap-1" [attr.data-testid]="'block-reason-' + b.id">
                         <span class="material-symbols-outlined text-[16px]" aria-hidden="true">lock</span>{{ r }}
                       </p>
+                    } @else if (editingId() !== b.id && deletingId() !== b.id) {
+                      <div class="flex gap-2">
+                        <button type="button" class="ui-btn-ghost" [attr.data-testid]="'block-edit-' + b.id" (click)="startEdit(b)"
+                          [attr.aria-label]="'Editar bloque ' + describe(b)">Editar</button>
+                        <button type="button" class="ui-btn-ghost text-error" [attr.data-testid]="'block-delete-' + b.id" (click)="askDelete(b)"
+                          [attr.aria-label]="'Eliminar bloque ' + describe(b)">Eliminar</button>
+                      </div>
+                    }
+                    @if (editingId() === b.id) {
+                      <app-block-form [locations]="activeLocations()" [initial]="b" submitLabel="Guardar cambios" [saving]="rowBusy()"
+                        [cancellable]="true" (submitted)="update(b, $event)" (cancelled)="editingId.set(null)" />
+                    }
+                    @if (deletingId() === b.id) {
+                      <div class="flex flex-wrap items-center gap-2" role="group" [attr.aria-label]="'Confirmar eliminación de ' + describe(b)">
+                        <span class="text-[12px] text-on-surface">¿Eliminar este bloque? Se retirarán sus cupos libres.</span>
+                        <button type="button" class="px-3 py-1.5 rounded-lg bg-error text-white text-[12px] font-semibold border-0 cursor-pointer disabled:opacity-60"
+                          [attr.data-testid]="'block-delete-confirm-' + b.id" (click)="remove(b)" [disabled]="rowBusy()">{{ rowBusy() ? 'Eliminando...' : 'Eliminar' }}</button>
+                        <button type="button" class="ui-btn-ghost" (click)="deletingId.set(null)" [disabled]="rowBusy()">Cancelar</button>
+                      </div>
+                    }
+                    @if (rowErrorFor() === b.id && rowError()) {
+                      <p class="ui-alert-error" role="alert" [attr.data-testid]="'block-row-error-' + b.id">{{ rowError() }}</p>
                     }
                   </li>
                 }
@@ -132,6 +158,14 @@ export class BlocksComponent {
     }
     return Array.from(byDate, ([date, blocks]) => ({ date, blocks }));
   });
+
+  // HU-013 edición / eliminación
+  readonly editingId = signal<number | null>(null);
+  readonly deletingId = signal<number | null>(null);
+  readonly rowBusy = signal(false);
+  readonly rowError = signal<string | null>(null);
+  readonly rowErrorFor = signal<number | null>(null);
+  readonly rowMessage = signal('');
 
   constructor() {
     this.loadCalendar();
@@ -183,6 +217,73 @@ export class BlocksComponent {
         this.calendarLoading.set(false);
       },
     });
+  }
+
+  startEdit(b: CalendarBlockDto) {
+    this.deletingId.set(null);
+    this.clearRowFeedback();
+    this.editingId.set(b.id);
+  }
+
+  askDelete(b: CalendarBlockDto) {
+    this.editingId.set(null);
+    this.clearRowFeedback();
+    this.deletingId.set(b.id);
+  }
+
+  update(b: CalendarBlockDto, request: BlockRequest) {
+    this.rowBusy.set(true);
+    this.clearRowFeedback();
+    this.api.updateBlock(b.id, request).subscribe({
+      next: () => {
+        this.rowBusy.set(false);
+        this.editingId.set(null);
+        this.rowMessage.set(`Bloque actualizado: ${this.describe(request)}.`);
+        this.loadCalendar();
+      },
+      error: (e: unknown) => this.rowFailed(b, e, 'No fue posible actualizar el bloque.'),
+    });
+  }
+
+  remove(b: CalendarBlockDto) {
+    this.rowBusy.set(true);
+    this.clearRowFeedback();
+    this.api.deleteBlock(b.id).subscribe({
+      next: () => {
+        this.rowBusy.set(false);
+        this.deletingId.set(null);
+        this.rowMessage.set(`Bloque eliminado: ${this.describe(b)}.`);
+        this.loadCalendar();
+      },
+      error: (e: unknown) => this.rowFailed(b, e, 'No fue posible eliminar el bloque.'),
+    });
+  }
+
+  private rowFailed(b: CalendarBlockDto, e: unknown, fallback: string) {
+    this.rowBusy.set(false);
+    this.rowErrorFor.set(b.id);
+    this.rowError.set(errorMessage(e, fallback));
+    // El estado del bloque cambió en el servidor: se refresca para mostrar el motivo actualizado.
+    if (['PAST_BLOCK', 'BLOCK_COMMITTED', 'COMMITTED_BLOCK', 'NOT_FOUND'].includes(errorCode(e))) {
+      this.editingId.set(null);
+      this.deletingId.set(null);
+      this.refreshKeepingError();
+    }
+  }
+
+  private refreshKeepingError() {
+    const from = this.from();
+    const to = this.to();
+    this.api.calendar(from, to, this.locationFilter() || null).subscribe({
+      next: (blocks) => this.blocks.set(blocks),
+      error: () => undefined,
+    });
+  }
+
+  private clearRowFeedback() {
+    this.rowError.set(null);
+    this.rowErrorFor.set(null);
+    this.rowMessage.set('');
   }
 
   describe(b: Pick<CalendarBlockDto, 'date' | 'startTime' | 'endTime'>): string {
